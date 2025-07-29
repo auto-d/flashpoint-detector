@@ -4,12 +4,12 @@ import argparse
 import os
 import tempfile
 import glob
-from fed import naive
-from fed import classic 
-from fed import nn
-from fed import FlashpointsDataset, FlashpointsTorchDataset
-from fed import run_subprocess
-from fed import demo
+from . import naive
+from . import classic 
+from . import nn
+from fed.dataset import FlashpointsDataset, FlashpointsTorchDataset
+from fed.process import run_subprocess
+from . import demo
 
 def deploy(share=False, data_tag="test"): 
     """

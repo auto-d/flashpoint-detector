@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator 
 from sklearn.metrics.pairwise import cosine_similarity
-import similarity
+from . import similarity
 
 class CfnnEstimator(BaseEstimator):
     """

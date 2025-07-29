@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator 
 import matplotlib.pyplot as plt
 import pickle
-from ..src import similarity
+from . import similarity
 
 class NaiveEstimator(BaseEstimator): 
     """

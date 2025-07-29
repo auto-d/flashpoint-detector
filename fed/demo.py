@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from dataset import FlashpointsDataset, FlashpointsTorchDataset
 import nn
-import similarity
+from . import similarity
 
 from sklearn.metrics import classification_report, accuracy_score, top_k_accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 
