@@ -1,8 +1,8 @@
 import gradio as gr
 import pandas as pd
 import numpy as np
-from dataset import FlashpointsDataset, FlashpointsTorchDataset
-import nn
+from fed.dataset import FlashpointsDataset, FlashpointsTorchDataset
+from . import nn
 from . import similarity
 
 from sklearn.metrics import classification_report, accuracy_score, top_k_accuracy_score, confusion_matrix, ConfusionMatrixDisplay
