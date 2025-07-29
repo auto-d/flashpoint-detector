@@ -8,7 +8,7 @@ import classic
 import naive
 import tempfile
 import glob
-from dataset import DeepCartDataset, DeepCartTorchDataset
+from dataset import FlashpointsDataset, FlashpointsTorchDataset
 from process import run_subprocess
 from demo import demo
 
@@ -68,10 +68,6 @@ def build_parser():
 
     # Build mode 
     build_parser = subparsers.add_parser("build") 
-    build_parser.add_argument("--items-file", type=readable_file, help="File to containing item metadata", default="data/2023/items_1.6M.parquet", required=False)
-    build_parser.add_argument("--reviews-file", type=readable_file, help="File to contining review data", default="data/2023/reviews_10M.parquet", required=False)
-    build_parser.add_argument("--min-interactions", type=int, help="Minimum threshold for number of ratings by a user", default=10, required=False)
-    build_parser.add_argument("--min-ratings", type=int, help="Minimum number of product reviews an item must have", default=10)
     build_parser.add_argument("--sample-n", type=int, help="Number of users to sample from the total", default=10000, required=False)
     build_parser.add_argument("--output-dir", type=readable_dir, help="Directory to write resulting dataset to", default="data/processed", required=False)
     build_parser.add_argument("--tag", type=str, help="Friendly name to tag dataset names with", required=True)
@@ -90,7 +86,6 @@ def build_parser():
     test_parser.add_argument("--model_dir", type=readable_dir, help="Directory to load model from", default="models")
     test_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/processed", required=False)    
     test_parser.add_argument("--data-tag", type=str, help="Dataset tag to look for (set during creation)", required=True)
-    test_parser.add_argument("--top-k", type=int, help="Number of recommendations to evaluate", default=10)
     test_parser.add_argument("--type", choices=['naive', 'classic', 'neural'], default='neural')
 
     # Deploy mode 
@@ -105,7 +100,7 @@ def router():
     Argument processor and router
 
     @NOTE: Argparsing with help from chatgpt: https://chatgpt.com/share/685ee2c0-76c8-8013-abae-304aa04b0eb1
-    @NOTE: arg parsing logic incorporates work from NLP assignment
+    @NOTE: arg parsing logic incorporates work from prior 540 assignments
     """
 
     parser = build_parser() 
@@ -113,47 +108,42 @@ def router():
     
     match(args.mode):
         case "build":
-            dataset = DeepCartDataset(args.tag)
-            dataset.extract(
-                args.items_file, 
-                args.reviews_file,
-                args.min_interactions, 
-                args.min_ratings, 
-                args.sample_n)
+            dataset = FlashpointsDataset(args.tag)
+            dataset.load()
             dataset.store(args.output_dir)
 
         case "train":
-            dataset = DeepCartDataset(args.data_tag)
-            dataset.load(args.data_dir)
+            dataset = FlashpointsDataset(args.data_tag)
+            dataset.load()
             dataset.split()
 
             match(args.type): 
                 case 'naive':
-                    model = naive.train(dataset.train, dataset.val, dataset.val_chk)
+                    model = naive.train(dataset.train, dataset.val)
                     naive.save_model(model, args.model_dir)
                 case 'classic':
-                    model = classic.train(dataset.train, dataset.val, dataset.val_chk) 
+                    model = classic.train(dataset.train, dataset.val) 
                     classic.save_model(model, args.model_dir)
                 case 'neural': 
-                    torch_dataset = DeepCartTorchDataset(matrix=dataset.train, batch_size=args.nn_batch)
-                    model = nn.train(torch_dataset, args.nn_epochs, dataset.val, dataset.val_chk)
+                    torch_dataset = FlashpointsTorchDataset(matrix=dataset.train, batch_size=args.nn_batch)
+                    model = nn.train(torch_dataset, args.nn_epochs, dataset.val)
                     nn.save_model(model, args.model_dir)
 
         case  "test":
-            dataset = DeepCartDataset(args.data_tag)
+            dataset = FlashpointsDataset(args.data_tag)
             dataset.load(args.data_dir)
             dataset.split() 
             match (args.type): 
                 case 'naive':
                     model = naive.load_model(args.model_dir)
-                    naive.test(model, dataset.val, dataset.val_chk, top_k=args.top_k)
+                    naive.test(model, dataset.test)
                 case 'classic':
                     model = classic.load_model(args.model_dir)
-                    classic.test(model, dataset.val, dataset.val_chk, top_k=args.top_k) 
+                    classic.test(model, dataset.test) 
                 case 'neural': 
                     model = nn.load_model(args.model_dir)
-                    torch_dataset = DeepCartTorchDataset(matrix=dataset.val)
-                    nn.test(model, torch_dataset, dataset.val_chk, top_k=args.top_k)
+                    torch_dataset = FlashpointsTorchDataset(dataset)
+                    nn.test(model, torch_dataset, dataset.test)
 
         case "deploy":
             deploy(args.share, args.data_tag)
