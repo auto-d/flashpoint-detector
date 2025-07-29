@@ -148,6 +148,3 @@ def router():
             deploy(args.share, args.data_tag)
         case _:
             parser.print_help()
-
-if __name__ == "__main__": 
-    router()
