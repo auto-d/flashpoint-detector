@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator 
 from sklearn.metrics.pairwise import cosine_similarity
-from recommenders.evaluation.python_evaluation import map_at_k, ndcg_at_k, precision_at_k, recall_at_k
 import similarity
 
 class CfnnEstimator(BaseEstimator):

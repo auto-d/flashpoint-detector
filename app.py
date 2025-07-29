@@ -2,15 +2,14 @@
 
 import argparse 
 import os
-import naive
-import nn
-import classic 
-import naive
 import tempfile
 import glob
-from dataset import FlashpointsDataset, FlashpointsTorchDataset
-from process import run_subprocess
-from demo import demo
+from fed import naive
+from fed import classic 
+from fed import nn
+from fed import FlashpointsDataset, FlashpointsTorchDataset
+from fed import run_subprocess
+from fed import demo
 
 def deploy(share=False, data_tag="test"): 
     """

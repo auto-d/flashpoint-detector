@@ -10,7 +10,7 @@ import seaborn as sns
 import shapely
 import datetime
 import kagglehub
-from sklearn import train_test_split
+from sklearn.model_selection import train_test_split
 from tqdm import tqdm 
 import torch 
 

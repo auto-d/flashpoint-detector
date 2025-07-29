@@ -1,7 +1,7 @@
 import gradio as gr
 import pandas as pd
 import numpy as np
-from dataset import DeepCartDataset, DeepCartTorchDataset
+from dataset import FlashpointsDataset, FlashpointsTorchDataset
 import nn
 import similarity
 

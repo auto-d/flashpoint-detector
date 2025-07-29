@@ -9,10 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from recommenders.evaluation.python_evaluation import map_at_k, ndcg_at_k, precision_at_k, recall_at_k
 import similarity
-from recommenders.datasets.sparse import AffinityMatrix
-from dataset import DeepCartTorchDataset
+from dataset import FlashpointsTorchDataset
 
 class Autoencoder(nn.Module):
     """
