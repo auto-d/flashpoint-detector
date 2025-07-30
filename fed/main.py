@@ -61,7 +61,7 @@ def build_parser():
     """
     Apply a command-line schema, returning a parser
     """
-    parser = argparse.ArgumentParser("deepcart", description="Amazon electronics recommendations via variational autoencoder")
+    parser = argparse.ArgumentParser("fed", description="Flashpoints Ukraine event predictor")
 
     subparsers = parser.add_subparsers(dest="mode", required=True)
 
