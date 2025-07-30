@@ -25,7 +25,7 @@ Prior work assembling a cohesive dataset to support conflict event prediction re
 
 he primary dataset for this project is the Flashpoints Ukraine Dataset which was open-sourced in support of work completed for AIPI-510 in the Fall of 2024. A complete datasheet can be found on the companion Github site. Auxiliary elevation data will be ingested from the US Geological Survey (USGS) and can be found on the USGS website. 
 
-![FUD](fud.png)
+![FUD](docs/fud.png)
 
 ## Prior Efforts 
 
