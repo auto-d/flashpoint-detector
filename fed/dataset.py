@@ -50,16 +50,17 @@ class FlashpointsDataset():
 
         if self.path.endswith('.shp'):
             tqdm.write("Found shapefile dataset, loading...")
-            #TODO: we used the layer arg here, but I think maybe not needed if we only wrote one layer. clarify. 
             gdf = gpd.read_file(self.path)
         elif self.path.endswith('.gdb'):
             gdf = tqdm.write("Found geodatabase, loading...")
+            gdf = gpd.read_file(self.path)
         elif self.path.endswith('.gpkg'):
             gdf = tqdm.write("Loading geopackage....")
+            gdf = gpd.read_file(self.path)
         else: 
             raise ValueError('Unknown dataset format, {self.path}!')
 
-        self.crs = gdf.crs  
+        print(f"Loaded GUD, with coordinate system {gdf.crs}")  
 
     def store(self, dir_):
         """ 
