@@ -38,7 +38,7 @@ class FlashpointsDataset():
         optionally forcing the download regardless of whether we have a cached copy. 
         """
         tqdm.write(f"Retrieving FUD from Kaggle (force={force})...")
-        self.path = kagglehub.dataset_download("justanotherjason/flashpoint-ukraine-dataset", force_download=force)
+        self.path = kagglehub.dataset_download("justanotherjason/flashpoint-ukraine-dataset", path="fed.gpkg", force_download=force)
 
         print(f"Done. Path to local dataset files: {self.path}")
 
@@ -53,11 +53,27 @@ class FlashpointsDataset():
             #TODO: we used the layer arg here, but I think maybe not needed if we only wrote one layer. clarify. 
             gdf = gpd.read_file(self.path)
         elif self.path.endswith('.gdb'):
-            gdf = tqdm.write("Found geopacakage dataset, loading...")
+            gdf = tqdm.write("Found geodatabase, loading...")
+        elif self.path.endswith('.gpkg'):
+            gdf = tqdm.write("Loading geopackage....")
         else: 
             raise ValueError('Unknown dataset format, {self.path}!')
 
         self.crs = gdf.crs  
+
+    def store(self, dir_):
+        """ 
+        Write our dataset to disk 
+        """
+        os.makedirs(dir_, exist_ok=True)
+
+        raise NotImplementedError
+    
+        fud_file = os.path.join(dir_,f"fud_{self.tag}.parquet")
+        print(f"Writing {len(self.gdf):,} reviews as {fud_file}...")
+        self.reviews.to_parquet(fud_file)
+
+        print(f"Wrote '{self.tag}' dataset to {dir_}.")
 
     def build(self): 
         """
@@ -69,29 +85,6 @@ class FlashpointsDataset():
         # terrain/topo 
 
         print(f"Generation complete!")
-
-    def store(self, dir_):
-        """ 
-        Write our dataset to disk 
-        """
-        os.makedirs(dir_, exist_ok=True)
-
-        fud_file = os.path.join(dir_,f"fud_{self.tag}.parquet")
-        print(f"Writing {len(self.gdf):,} reviews as {fud_file}...")
-        self.reviews.to_parquet(fud_file)
-
-        print(f"Wrote '{self.tag}' dataset to {dir_}.")
-
-    def load(self, dir_): 
-        """
-        Read our datasets off disk 
-        """    
-        reviews_path = os.path.join(dir_, f"reviews_{self.tag}.parquet")
-
-        print(f"Loading reviews... ")
-        gdf = pd.read_parquet(reviews_path) 
-
-        print(f"Memory usage:{self.get_memory_usage()}")
 
     def split(self):
         """

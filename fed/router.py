@@ -60,6 +60,8 @@ def nonexistent_dir(path):
 def build_parser(): 
     """
     Apply a command-line schema, returning a parser
+
+    NOTE: Parser setup based on work from prior assignments 
     """
     parser = argparse.ArgumentParser("fed", description="Flashpoints Ukraine event predictor")
 
@@ -67,13 +69,13 @@ def build_parser():
 
     # Build mode 
     build_parser = subparsers.add_parser("build") 
-    build_parser.add_argument("--sample-n", type=int, help="Number of users to sample from the total", default=10000, required=False)
-    build_parser.add_argument("--output-dir", type=readable_dir, help="Directory to write resulting dataset to", default="data/processed", required=False)
+    build_parser.add_argument("--sample-n", type=int, help="Number of detections to sample", default=10000, required=False)
+    build_parser.add_argument("--output-dir", type=readable_dir, help="Directory to write resulting dataset to", default="data/", required=False)
     build_parser.add_argument("--tag", type=str, help="Friendly name to tag dataset names with", required=True)
 
     # Train mode 
     train_parser = subparsers.add_parser("train") 
-    train_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/processed", required=False)
+    train_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/", required=False)
     train_parser.add_argument("--data-tag", type=str, help="Dataset tag to look for (set during creation)", required=True)
     train_parser.add_argument("--model-dir", help="Directory to write resulting model to", default="models")
     train_parser.add_argument("--nn-epochs", type=int, default=1)
@@ -83,7 +85,7 @@ def build_parser():
     # Test mode 
     test_parser = subparsers.add_parser("test") 
     test_parser.add_argument("--model_dir", type=readable_dir, help="Directory to load model from", default="models")
-    test_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/processed", required=False)    
+    test_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/", required=False)    
     test_parser.add_argument("--data-tag", type=str, help="Dataset tag to look for (set during creation)", required=True)
     test_parser.add_argument("--type", choices=['naive', 'classic', 'neural'], default='neural')
 
@@ -98,8 +100,8 @@ def router():
     """
     Argument processor and router
 
-    @NOTE: Argparsing with help from chatgpt: https://chatgpt.com/share/685ee2c0-76c8-8013-abae-304aa04b0eb1
-    @NOTE: arg parsing logic incorporates work from prior 540 assignments
+    NOTE: Argparsing with help from chatgpt: https://chatgpt.com/share/685ee2c0-76c8-8013-abae-304aa04b0eb1
+    NOTE: arg parsing logic incorporates work from prior 540 assignments
     """
 
     parser = build_parser() 
