@@ -89,6 +89,19 @@ class FlashpointsDataset():
 
     def split(self):
         """
+        Splitting data for training and evaluation in the context of a self-exciting process as 
+        we are dealing with in conflict events is problematic as: 
+        1. prior conflict events influence future conflict events, doing a naive temporal or class-based split 
+        both deprives us at prediction time of relevant priors and leaks ground-truth at training time 
+        2. ignores the fact that latent patterns we're trying to predict may evolve over time, and a 
+        temporal split would potentially remove a large swath of information a model might need to learn. 
+
+        Drawing inspiration from weather prediction models (which have the same problem) we opt for a 
+        sliding window
+
+
+        See conversation with gpt-4o on meteorological approaches: https://chatgpt.com/share/688a362f-7ba4-8013-a4b8-3be2073f8569 
+
         Generate splits as follows: 
         - self.train : training matrix
         - self.val : matrix to predict on during validation 

@@ -6,6 +6,7 @@ from sklearn.base import BaseEstimator
 import matplotlib.pyplot as plt
 import pickle
 from . import similarity
+from sklearn.metrics import f1_score, precision_recall_curve
 
 class NaiveEstimator(BaseEstimator): 
     """
