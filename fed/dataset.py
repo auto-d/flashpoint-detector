@@ -14,6 +14,60 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm 
 import torch 
 
+#TODO: blend this into below skeletong and finish the dataset abstraction 
+
+class Story():
+
+    def __init__(self, t, depth, x, y, width, type='train'): 
+
+        self.t = t
+        self.depth = depth 
+        self.x = x 
+        self.y = y 
+        self.width = width 
+        self.type = type
+
+class FlashpointsDataset(): 
+    
+    def __init__(self, data=None): 
+        self.data = data
+
+        self.train = None
+        self.val = None
+        self.test = None         
+
+        # Russia invaded Ukraine during the morning of the 24th of February, 2022. However this *relatively* 
+        # quiescent period was still marked by skirmishes in the Donbas by Russia-backed separatist groups. 
+        # These clashes intensified circa February of 2022, creating a pretext for the imminent Russian 
+        # invasion. We'll mask all data during this 'transition' (from low-intensity to high-intensity conflict) 
+        # period and consider the 24th the first day of escalated belligerence and overt war. 
+        self.transition_period = (pd.Timestamp(year=2022, month=2, day=1), pd.Timestamp(year=2022, month=2, day=23))
+
+    def import_fud(): 
+        pass 
+
+    def permute_stories(self): 
+        """
+        Given the raw numpy dataset, discover and memorialize our 'stories' (contiguous blocks of time and space 
+        """
+
+        self.low_period = data[0]
+        # We have a 4-d numpy array here, the critical bits to partition being the spatial (first two) and temporal (third)
+        story = Story 
+
+    def partition_stories(val_pct=0.1, test_pct=0.1):
+        """
+        Partition our stories into train, validation and test sets. Any stories not reserved for validation 
+        or test are allocated to training
+        """
+
+    def densify_story(story): 
+        """
+        Stories are managed internally as pointers to story metadata, this method yields a dense 
+        array that can be used for model training. 
+        """
+        pass
+
 class FlashpointsDataset(): 
     """
     Abstraction for the Flashpoints Ukraine Dataset (FUD) 
@@ -86,6 +140,7 @@ class FlashpointsDataset():
         # terrain/topo 
 
         print(f"Generation complete!")
+
 
     def split(self):
         """
