@@ -313,14 +313,28 @@ class FlashpointsDataset():
         val_count = val if val >= 1.0 else val * int(len(self.stories))
         test_count = test if test >= 1.0 else test * int(len(self.stories))
         
-        self.val = random.choices(range(0, len(self.stories)), k=val_count)
-        self.test = random.choices(range(0, len(self.stories)), k=test_count)
+        # Build a list of all indicies, then remove them from the list as we sample
+        # We'll avoid breaking up our core dataset here and instead just pass a list of indicies
+        story_ixs = np.arange(0, len(self.stories)) 
+        self.val = random.choices(story_ixs, k=val_count)
+        np.delete(story_ixs, self.val)
 
-        #TODO: remove the val and test stories 
-        self.train = 
+        self.test = random.choices(story_ixs, k=test_count)
+        np.delete(story_ixs, self.test)
 
-        #TODO: clean all test stories with intersect_stories
+        self.train = story_ixs
 
+        # TODO: clean all test stories with intersect_stories and invent a solution to the 
+        # lost index problem 
+
+    def get_story(self, ix): 
+        return Story(
+            depth=self.story_depth,
+            width=self.story_width, 
+            x=self.stories[ix][0], 
+            y=self.stories[ix][1], 
+            t=self.stories[ix][2], 
+        )
     def densify_story(self, story): 
         """
         Retrieve a dense representation of the story, sans labels. 
@@ -352,7 +366,7 @@ class FlashpointsDataset():
             ]
         return dense 
 
-    def split(self, val):
+    def split(self):
         """
         Splitting data for training and evaluation in the context of a potentially self-exciting process as 
         we are dealing with in conflict events is problematic as: 
@@ -375,7 +389,15 @@ class FlashpointsDataset():
         - self.test : matrix for test predictions
         """
         tqdm.write(f"Splitting dataset ({len(self.gdf)} rows)")
-    
+        
+        self.partition_stories()
+        
+        tqdm.write(f"Done! Post-split counts:\n"\
+                   f" - ({len(self.train)} training stories)"\
+                   f" - ({len(self.val)} val stories)"\
+                   f" - ({len(self.test)} test stories)"\
+                )
+            
     def store(self, dir_):
         """ 
         Write the FED dataset to disk 
