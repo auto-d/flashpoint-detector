@@ -69,7 +69,11 @@ def build_parser():
 
     # Build mode 
     build_parser = subparsers.add_parser("build") 
-    build_parser.add_argument("--sample-n", type=int, help="Number of detections to sample", default=10000, required=False)
+    build_parser.add_argument("--sample-n", type=int, help="Number of detections (stories) to sample per class", default=10000, required=False)
+    build_parser.add_argument("--spatial-step", type=int, help="Size of one spacial step, in decimal degrees", default=0.05, required=False)
+    build_parser.add_argument("--temporal-step", type=int, help="Number of temporal step, in days", default=1, required=False)
+    build_parser.add_argument("--ukraine-shapefile", type=str, help="Path to Ukraine administrative boundaries", default="../data/ukr_admbnd_sspe_20240416_AB_GDB.gdb", required=False)
+    
     build_parser.add_argument("--output-dir", type=readable_dir, help="Directory to write resulting dataset to", default="data/", required=False)
     build_parser.add_argument("--tag", type=str, help="Friendly name to tag dataset names with", required=True)
 
@@ -109,8 +113,12 @@ def router():
     
     match(args.mode):
         case "build":
-            dataset = FlashpointsDataset(args.tag)
-            dataset.load()
+            dataset = FlashpointsDataset(
+                args.tag, 
+                spatial_step=args.spatial_step, 
+                temporal_step=args.temporal_step,
+                n_quiescent_stories=args.sample_n, n_conflict_stories=args.sample_n)
+            dataset.build()
             dataset.store(args.output_dir)
 
         case "train":
