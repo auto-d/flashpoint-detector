@@ -6,9 +6,8 @@ from sklearn.base import BaseEstimator
 import matplotlib.pyplot as plt
 import pickle
 from . import similarity
-from dataset import FlashpointsDataset, Story
+from .dataset import FlashpointsDataset, Story
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, accuracy_score
-
 class NaiveEstimator(BaseEstimator): 
     """
     Estimator that applies an averaging heuristic to record feature distributions 
@@ -161,11 +160,11 @@ def load_model(path):
 
     return model
 
-def train(train, val): 
+def train(dataset, train, val): 
     """
     'Train' the naive model 
     """
-    return NaiveEstimator().fit(train, val)
+    return NaiveEstimator().fit(dataset, train, val)
 
 def test(model, dataset, test, preds):
     """

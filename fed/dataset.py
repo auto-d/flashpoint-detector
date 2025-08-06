@@ -1,23 +1,20 @@
 import math 
 import random
 import pickle
-import sys 
 import os
 import pandas as pd
 import numpy as np 
-import fiona
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt 
-import seaborn as sns
-import shapely
-import datetime
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import kagglehub
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm 
 import torch 
-
-#TODO: blend this into below skeletong and finish the dataset abstraction 
+from . import similarity
 
 class Story():
     """
@@ -40,7 +37,6 @@ class Story():
 
     def __str__(self): 
         return f"t: {self.t}\nx:{self.x}\ny:{self.y}"
-
 
 class FlashpointsDataset():     
     """
@@ -81,11 +77,14 @@ class FlashpointsDataset():
         self.story_depth = story_depth
 
         # Lat/lon increment to subdivide our spatial dimension by
-        self.spatial_step = 0.05
+        self.spatial_step = spatial_step
         self.spatial_step_km = 111 * self.spatial_step
 
         # Day increment to subdividide our temporal dimension by 
         self.temporal_step = temporal_step
+
+        self.n_quiescent_stories = n_quiescent_stories
+        self.n_conflict_stories = n_conflict_stories
 
         # Looking at the distribution of conflict event types, I'm not sure there's value in distinguishing a 
         # shelling/artillery/missile attack and an armed clash, for example. While ACLED makes a 
@@ -104,7 +103,7 @@ class FlashpointsDataset():
         optionally forcing the download regardless of whether we have a cached copy. 
         """
         tqdm.write(f"Retrieving FUD from Kaggle (force={force})...")
-        self.path = kagglehub.dataset_download("justanotherjason/flashpoint-ukraine-dataset", path="fed.gpkg", force_download=force)
+        self.path = kagglehub.dataset_download("justanotherjason/flashpoint-ukraine-dataset", path="fud.gpkg", force_download=force)
 
         tqdm.write(f"Done. Path to local dataset files: {self.path}")
 
@@ -127,6 +126,7 @@ class FlashpointsDataset():
             raise ValueError('Unknown dataset format, {self.path}!')
 
         tqdm.write(f"Loaded FUD, with coordinate system {gdf.crs}")  
+        return gdf        
 
     def build(self, admin_boundaries_path): 
         """
@@ -150,7 +150,7 @@ class FlashpointsDataset():
         lon_steps = int(math.floor(lon_range/self.spatial_step)) + 1
         lat_steps = int(math.floor(lat_range/self.spatial_step)) + 1
         time_steps = int(math.floor(time_range/self.temporal_step)) + 1
-        tqdm.write(lon_steps, lat_steps, time_steps)
+        tqdm.write(f"Longitude steps @ {lon_steps}, latitude @ {lat_steps}, and time @ {time_steps}")
 
         self.quiescent_days = (self.transition_period[0] - self.min_date).days
         self.conflict_days = (self.max_date - self.transition_period[1]).days 
@@ -162,10 +162,10 @@ class FlashpointsDataset():
         gdf['night_d'] = gdf.f_daynight.apply(lambda x: 0 if x == 'D' else 1)
         
         tqdm.write(f"Discretizing dataset at {self.spatial_step} decimal degree ({self.spatial_step_km:.2f} km) and "\
-                   "{self.temporal_step} day resolution. This will create a grid of {lon_steps} x {lat_steps} x {time_steps} "\
-                   "({lon_steps * lat_steps * time_steps:,} cells).")
+                   f"{self.temporal_step} day resolution. This will create a grid of {lon_steps} x {lat_steps} x {time_steps} "\
+                   f"({lon_steps * lat_steps * time_steps:,} cells).")
         tqdm.write(f"Training aperture will be {self.story_width} steps square ({self.story_width * self.spatial_step_km:.2f} km"\
-                   "total and {self.story_depth} steps long ({self.story_depth} days)).")
+                   f"total and {self.story_depth} steps long ({self.story_depth} days)).")
 
         # Discretize the area into cells and storing as a 'lattice' here to support our modeling aspirations
         for i, row in tqdm(gdf.iterrows(), total=len(gdf)): 
@@ -191,21 +191,44 @@ class FlashpointsDataset():
         # Now generate the basic training/test/validation objects 
         self.permute_stories()
 
-    def randomize_coords(self, x, x_max, y, y_max): 
-        x = random.randrange(max(0, x - self.story_width), min(x_max, x + self.story_width))
-        y = random.randrange(max(0, y - self.story_width), min(y_max, y + self.story_width))
+    def randomize_coords(self, x, y):
+        """
+        Given an x and y location for a labeled event, find a random slice of the spatial dimension 
+        which still includes that location (and its label). Recall the story we'll record is anchored at the 
+        bottom/low end of each dimension and runs story_width wide. 
+        """
+        w = self.story_width
 
+        x = random.randrange(max(0, x - w),max(x,1))
+        y = random.randrange(max(0, y - w),max(y,1))
+
+        # If the story is off the board, clamp it to allow a full-width story
+        if x + w > self.x_max: 
+            x = self.x_max - w
+        if y + w > self.y_max: 
+            y = self.y_max - w 
+
+        if x + self.story_width > self.x_max or y + self.story_width > self.y_max: 
+            raise ValueError("Story out of range! Perhaps fewer steps available than the story width requires.")
+    
         return x, y
     
     def permute_stories(self):         
         """
         Given the raw numpy dataset, discover and memorialize our 'stories' (contiguous blocks of time and space
-        that are within the bounds of the dataset)
+        that are within the bounds of the dataset). Every story will have at least one label in its ultimate time
+        step. The tuple x,y,t identify a story uniquely, where: 
+         - x = the lower bound of the longitude/x region
+         - x + story_width = upper bound of the long/x region 
+         - y = the lower bound of the region in the latitude/y dimension 
+         - y + story_width = upper bound of the lat/y
+         - t = lower bound in the temporal dimension 
+         - t + story_depth = upper bound (end) of the story in the temporal dim 
         """
         self.stories = np.zeros((self.n_quiescent_stories + self.n_conflict_stories, 3), dtype=np.int32)
 
-        x_max = self.lattice.shape[0]
-        y_max = self.lattice.shape[1]
+        self.x_max = self.lattice.shape[0]
+        self.y_max = self.lattice.shape[1]
 
         # Boundaries for the negative class - we must have enough room for priors and we have to cut off by the transition 
         n_start = 0 + self.story_depth
@@ -216,15 +239,17 @@ class FlashpointsDataset():
         p_end = (self.max_date - self.min_date).days
 
         tqdm.write(f"Sampling {self.n_quiescent_stories} stories from the pre-war period ({self.min_date} - {self.transition_period[0]},"\
-                   "{self.quiescent_days} days total) and {self.n_conflict_stories} stories from the post-invasion period "\
-                   "{self.transition_period[1]} - {self.max_date}.")
+                   f"{self.quiescent_days} days total) and {self.n_conflict_stories} stories from the post-invasion period "\
+                   f"{self.transition_period[1]} - {self.max_date}.")
 
+        # Only allow windows that end with a non-zero label (-1 or 1)... ensures all stories 
+        # have an ending. 
         ixs = np.nonzero(self.lattice[:, :, :, self.feature_ixs['label']])
 
         quiescent = 0 
         conflict = 0 
 
-        # Sample stories with variation in the spatial aperture until our counters are full.  This 
+        # Sample labeled points with variation in the spatial aperture until our counters are full.  This 
         # accomplishes class balance and allows scaling to arbitrary dataset size. 
         with tqdm(total = self.n_quiescent_stories + self.n_conflict_stories) as progress: 
             while quiescent + conflict < self.n_quiescent_stories + self.n_conflict_stories: 
@@ -239,20 +264,20 @@ class FlashpointsDataset():
                 if candidate[self.feature_ixs['label']] == -1:
                     if quiescent < self.n_quiescent_stories: 
                         if t >= n_start and t < n_end: 
-                            x, y = self.randomize_coords(x, x_max, y, y_max)            
-                            self.stories[quiescent + conflict] = [x,y,t]
+                            x, y = self.randomize_coords(x, y)            
+                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]
                             quiescent += 1
                             progress.update(1)
                 
                 elif candidate[self.feature_ixs['label']] == 1:
                     if conflict < self.n_conflict_stories: 
                         if t >= p_start and t < p_end: 
-                            x, y = self.randomize_coords(x, x_max, y, y_max)                
-                            self.stories[quiescent + conflict] = [x,y,t]
+                            x, y = self.randomize_coords(x, y)                                            
+                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]                            
                             conflict += 1
                             progress.update(1)
                 else: 
-                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[7]}!")            
+                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[self.feature_ixs['label']]}!")            
         
         tqdm.write("Generation complete!")    
         
@@ -310,8 +335,8 @@ class FlashpointsDataset():
         or test are allocated to training. If value is less than one, it's treated as a percentage to 
         split out, otherwise it's a count of stories to hold out. 
         """
-        val_count = val if val >= 1.0 else val * int(len(self.stories))
-        test_count = test if test >= 1.0 else test * int(len(self.stories))
+        val_count = val if val >= 1.0 else int(val * len(self.stories))
+        test_count = test if test >= 1.0 else int(test * len(self.stories))
         
         # Build a list of all indicies, then remove them from the list as we sample
         # We'll avoid breaking up our core dataset here and instead just pass a list of indicies
@@ -328,13 +353,19 @@ class FlashpointsDataset():
         # lost index problem 
 
     def get_story(self, ix): 
-        return Story(
+        story =  Story(
             depth=self.story_depth,
             width=self.story_width, 
             x=self.stories[ix][0], 
             y=self.stories[ix][1], 
             t=self.stories[ix][2], 
         )
+
+        if story.x + self.story_width > self.x_max or story.y + self.story_width > self.y_max: 
+            raise ValueError("Story out of range! Perhaps fewer steps available than the story width requires.")
+        
+        return story 
+
     def densify_story(self, story): 
         """
         Retrieve a dense representation of the story, sans labels. 
@@ -358,7 +389,7 @@ class FlashpointsDataset():
         # Slice out the last day of features for this story (predicting the classification of a cell 
         # on the last day is always our target). Note this drops the third dimension, so we emit a 
         # width x width matrix of scalar labels. I.e. every cell has it's own label. 
-        dense = self.lattic[
+        dense = self.lattice[
             story.x : story.x + story.width, 
             story.y : story.y + story.width, 
             story.depth-1,
@@ -388,19 +419,42 @@ class FlashpointsDataset():
         - self.val : matrix to predict on during validation 
         - self.test : matrix for test predictions
         """
-        tqdm.write(f"Splitting dataset ({len(self.gdf)} rows)")
+        tqdm.write(f"Splitting dataset... ")
         
-        self.partition_stories()
+        self.partition_stories(val=10, test=10)
         
         tqdm.write(f"Done! Post-split counts:\n"\
-                   f" - ({len(self.train)} training stories)"\
-                   f" - ({len(self.val)} val stories)"\
-                   f" - ({len(self.test)} test stories)"\
+                   f" - ({len(self.train)} training stories)\n"\
+                   f" - ({len(self.val)} val stories)\n"\
+                   f" - ({len(self.test)} test stories)\n"\
                 )
             
+    def __getstate__(self):
+        """
+        Retrieve our state for saving
+
+        NOTE: gpt-4o assist on syntax to allow pickling of object but custom storage of huge numpy ndarraysj:
+        https://chatgpt.com/share/689297a2-c9bc-8013-8418-31a1adef2b42
+        """
+        state = self.__dict__.copy()
+        
+        # Zeroize the hefty arrays, we'll handle their storage separately...
+        state['lattice'] = None
+        state['stories'] = None
+        return state
+
+    def __setstate__(self, state):
+        """
+        Load state
+
+        NOTE: gpt-4o assist on syntax to allow pickling of object but custom storage of huge numpy ndarraysj:
+        https://chatgpt.com/share/689297a2-c9bc-8013-8418-31a1adef2b42
+        """        
+        self.__dict__.update(state)
+
     def store(self, dir_):
         """ 
-        Write the FED dataset to disk 
+        Write the FED dataset to disk, sadly this is a two-parter given the presence of large numpy ndarrays
         """
         os.makedirs(dir_, exist_ok=True)
     
@@ -408,25 +462,38 @@ class FlashpointsDataset():
         with open(path, 'wb') as f:
             pickle.dump(self, f)
 
-        tqdm.write(f"Wrote '{self.tag}' FED dataset to {path}.")
+        path = os.path.join(dir_,f"fed_{self.tag}_lattice.npz")            
+        np.savez_compressed(path, self.lattice)
 
-    def load(self, dir_): 
+        path = os.path.join(dir_,f"fed_{self.tag}_stories.npz")            
+        np.savez_compressed(path, self.stories)
+
+        tqdm.write(f"Wrote '{self.tag}' FED dataset to {dir_}.")
+
+    @classmethod
+    def load(self, dir_, tag): 
         """
         Load the dataset off disk 
         """
-        path = os.path.join(dir_, f"fed_{self.tag}.pkl")
+        path = os.path.join(dir_, f"fed_{tag}.pkl")
 
-        print(f"Loading FED... ")
+        tqdm.write(f"Loading FED from {dir_}... ")
 
-        # TODO: this is probably not going to work see how big the saved pickled array is above and then 
-        # decide how to proceed
-        # with open(path, 'rb') as f: 
-        #     return(pickle.load(f))
+        with open(path, 'rb') as f: 
+            obj = pickle.load(f)
     
-        # if type(state) != CfnnEstimator: 
-        #     raise ValueError(f"Unexpected type {type(model)} found in {filename}")     
+        if type(obj) != FlashpointsDataset: 
+             raise ValueError(f"Unexpected type {type(obj)} found in {path}!")     
+        
+        path = os.path.join(dir_,f"fed_{tag}_lattice.npz")            
+        obj.lattice = np.load(path)
 
-    def make_box(x=30.0, y=47.0, z=0, w=2, h=4):
+        path = os.path.join(dir_,f"fed_{tag}_stories.npz")  
+        obj.stories = np.load(path)
+
+        return obj
+
+    def make_box(self, x=30.0, y=47.0, z=0, w=2, h=4):
         """
         Create a box to illustrate our spatiotemporal cross-validation strategy
 
@@ -464,7 +531,7 @@ class FlashpointsDataset():
 
         return faces 
     
-    def render_box(box): 
+    def render_box(self, box): 
         """
         Helper to visualize a box constructed by make_box
         """                
@@ -486,8 +553,7 @@ class FlashpointsDataset():
 
         plt.tight_layout()
         
-
-    def set_axes_range(ax): 
+    def set_axes_range(self, ax): 
         """
         We need to adjust the axes range to keep things proportional, matplotlib doesn't do this by 
         default. 
@@ -501,7 +567,7 @@ class FlashpointsDataset():
         ax.set_ylim(y_limits[0], y_limits[1])
         ax.set_zlim(z_limits[0], z_limits[1])        
 
-    def temporal_scatter(gdf, n_dates=10):
+    def temporal_scatter(self, gdf, n_dates=10):
         """
         Create a scatter plot of x,ys (presumed to be the active geometry in the supplied DF)
         using a date column. 
@@ -530,10 +596,7 @@ class FlashpointsDataset():
         plt.tight_layout()
         plt.show()
 
-    def visualize_native_dataset(gdf, n_dates=1): 
-        temporal_scatter(gdf, n_dates=2)
-
-    def temporal_scatter_w_poly(gdf, geom, n_dates=3, color_map='OrRd', box=None, edge='r'): 
+    def temporal_scatter_w_poly(self, gdf, geom, n_dates=3, color_map='OrRd', box=None, edge='r'): 
         """
         Plot x/y coordinates for date groupings with reference geometry for the 
         first n dates (oldest to newest). Presumes we have a 'date' column in the 

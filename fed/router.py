@@ -2,13 +2,11 @@
 
 import argparse 
 import os
-import tempfile
-import glob
 from . import naive
 from . import classic 
 from . import nn
-from fed.dataset import FlashpointsDataset, FlashpointsTorchDataset
-from fed.process import run_subprocess
+from .dataset import FlashpointsDataset, FlashpointsTorchDataset
+from .process import run_subprocess
 from . import demo
 
 def deploy(share=False, data_tag="test"): 
@@ -70,9 +68,9 @@ def build_parser():
     # Build mode 
     build_parser = subparsers.add_parser("build") 
     build_parser.add_argument("--sample-n", type=int, help="Number of detections (stories) to sample per class", default=10000, required=False)
-    build_parser.add_argument("--spatial-step", type=int, help="Size of one spacial step, in decimal degrees", default=0.05, required=False)
+    build_parser.add_argument("--spatial-step", type=float, help="Size of one spacial step, in decimal degrees", default=0.05, required=False)
     build_parser.add_argument("--temporal-step", type=int, help="Number of temporal step, in days", default=1, required=False)
-    build_parser.add_argument("--ukraine-shapefile", type=str, help="Path to Ukraine administrative boundaries", default="../data/ukr_admbnd_sspe_20240416_AB_GDB.gdb", required=False)
+    build_parser.add_argument("--ukraine-shapefile", type=str, help="Path to Ukraine administrative boundaries", default="data/ukr_admbnd_sspe_20240416_AB_GDB.gdb", required=False)
     
     build_parser.add_argument("--output-dir", type=readable_dir, help="Directory to write resulting dataset to", default="data/", required=False)
     build_parser.add_argument("--tag", type=str, help="Friendly name to tag dataset names with", required=True)
@@ -118,20 +116,19 @@ def router():
                 spatial_step=args.spatial_step, 
                 temporal_step=args.temporal_step,
                 n_quiescent_stories=args.sample_n, n_conflict_stories=args.sample_n)
-            dataset.build()
+            dataset.build(args.ukraine_shapefile)
             dataset.store(args.output_dir)
 
         case "train":
-            dataset = FlashpointsDataset(args.data_tag)
-            dataset.load()
+            dataset = FlashpointsDataset.load(args.data_dir, args.data_tag)
             dataset.split()
 
             match(args.type): 
                 case 'naive':
-                    model = naive.train(dataset.train, dataset.val)
+                    model = naive.train(dataset, dataset.train, dataset.val)
                     naive.save_model(model, args.model_dir)
                 case 'classic':
-                    model = classic.train(dataset.train, dataset.val) 
+                    model = classic.train(dataset, dataset.train, dataset.val) 
                     classic.save_model(model, args.model_dir)
                 case 'neural': 
                     torch_dataset = FlashpointsTorchDataset(matrix=dataset.train, batch_size=args.nn_batch)
@@ -145,10 +142,10 @@ def router():
             match (args.type): 
                 case 'naive':
                     model = naive.load_model(args.model_dir)
-                    naive.test(model, dataset.test)
+                    naive.test(dataset, model, dataset.test)
                 case 'classic':
                     model = classic.load_model(args.model_dir)
-                    classic.test(model, dataset.test) 
+                    classic.test(dataset, model, dataset.test) 
                 case 'neural': 
                     model = nn.load_model(args.model_dir)
                     torch_dataset = FlashpointsTorchDataset(dataset)
