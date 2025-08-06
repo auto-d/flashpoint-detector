@@ -203,8 +203,8 @@ class FlashpointsDataset():
         """
         w = self.story_width
 
-        x = random.randrange(max(0, x - w),max(x,1))
-        y = random.randrange(max(0, y - w),max(y,1))
+        x = random.randrange(max(0, x - w + 1),max(x,1))
+        y = random.randrange(max(0, y - w + 1),max(y,1))
 
         # If the story is off the board, clamp it to allow a full-width story
         if x + w > self.x_max: 
@@ -217,6 +217,25 @@ class FlashpointsDataset():
     
         return x, y
     
+    def validate_story(self, story=None, ix=None): 
+        """
+        Sanity check to detect wayward stories at creation or training time 
+        """
+        
+        if ix is not None: 
+            story = self.get_story(ix)
+            
+        # In bounds?
+        assert(story.x <= self.x_max) 
+        assert(story.y <= self.y_max) 
+        assert(story.t >= 0 and story.t <= self.n_end or\
+                story.t >= self.p_start and story.t <= self.p_end)
+        
+        # Concludes with one or more labels? 
+        labels = self.label_story(story)
+        values = np.unique(labels)
+        assert(-1. in values or 1 in values)
+
     def permute_stories(self):         
         """
         Given the raw numpy dataset, discover and memorialize our 'stories' (contiguous blocks of time and space
@@ -235,12 +254,12 @@ class FlashpointsDataset():
         self.y_max = self.lattice.shape[1]
 
         # Boundaries for the negative class - we must have enough room for priors and we have to cut off by the transition 
-        n_start = 0 + self.story_depth
-        n_end = ((self.transition_period[0]) - self.min_date).days
+        self.n_start = 0 + self.story_depth
+        self.n_end = ((self.transition_period[0]) - self.min_date).days
 
         # Boundaries for the positive class - must start after the transition and end before we run out of data!
-        p_start = ((self.transition_period[1]) - self.min_date).days
-        p_end = (self.max_date - self.min_date).days
+        self.p_start = ((self.transition_period[1]) - self.min_date).days
+        self.p_end = (self.max_date - self.min_date).days
 
         tqdm.write(f"Sampling {self.n_quiescent_stories} stories from the pre-war period ({self.min_date} - {self.transition_period[0]},"\
                    f"{self.quiescent_days} days total) and {self.n_conflict_stories} stories from the post-invasion period "\
@@ -264,25 +283,28 @@ class FlashpointsDataset():
                 t = ixs[2][i]
                 candidate = self.lattice[x,y,t]
 
-                # TODO: use 0 and np.nan here to avoid later conversions
+                # Create a story for every valid labels that leaves us enough room for our 
+                # story brick (dim x,y,t)
                 if candidate[self.feature_ixs['label']] == -1:
                     if quiescent < self.n_quiescent_stories: 
-                        if t >= n_start and t < n_end: 
-                            x, y = self.randomize_coords(x, y)            
-                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]
+                        if t - self.story_depth + 1 >= self.n_start and t < self.n_end: 
+                            x2, y2 = self.randomize_coords(x, y)            
+                            self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
+                            self.validate_story(ix=quiescent + conflict)
                             quiescent += 1
                             progress.update(1)
                 
                 elif candidate[self.feature_ixs['label']] == 1:
                     if conflict < self.n_conflict_stories: 
-                        if t >= p_start and t < p_end: 
-                            x, y = self.randomize_coords(x, y)                                            
-                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]                            
+                        if t - self.story_depth + 1 >= self.p_start and t < self.p_end: 
+                            x2, y2 = self.randomize_coords(x, y)                                            
+                            self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
+                            self.validate_story(ix=quiescent + conflict)           
                             conflict += 1
                             progress.update(1)
                 else: 
-                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[self.feature_ixs['label']]}!")            
-        
+                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[self.feature_ixs['label']]}!")
+
         tqdm.write("Generation complete!")    
         
     def plot_story(self, story, start=None, end=None, heatmap=False):
@@ -303,6 +325,45 @@ class FlashpointsDataset():
         kwargs = { 'c': values, 'cmap': 'magma' } if heatmap else {}
 
         plt.scatter(x0, y0, **kwargs)
+        
+    def flatten_stories(self, ixs):
+        """
+        Flatten provided stories using feature averaging. 
+        
+        We started with a rather nicely curated geodataframe and had to mine it
+        to create our spatiotemporal bricks ('stories') to power a deeper analysis
+        yet still achieve a fixed-width representation. The volume of this new data
+        is problematic for classic models which want to eat all their data in one sitting
+        Here we'll create a streamlined dataframe which balances the richness of the 
+        new features against the challenges of pushing rich 4d data through a classic 
+        estimator like a random forest.
+        """
+        flattened = np.zeros((len(ixs), self.story_width** 2 * (len(self.feature_ixs)-1)))
+        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
+            story = self.get_story(ix)
+            ds = self.densify_story(story) 
+            
+            # Flatten our features through averaging to make this approachable. Note this is a large
+            # feature matrix (2800 columns in the 'small' configuration). Beware attempting
+            # this at higher spatial resolutions accordingly. 
+            flattened[i] = np.mean(ds, axis=2).flatten()
+        return flattened
+    
+    def flatten_labels(self, ixs, categories=False):
+        """
+        As with story flattener above, we need to offer a flattened data type for models that 
+        can't handle the dimensionality of what is now our native view (4d)
+        """
+        flattened = np.zeros((len(ixs), self.story_width** 2))
+        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
+            story = self.get_story(ix)
+            dl = self.label_story(story)
+            
+            flattened[i] = dl.flatten()
+        
+        flattened[flattened == 1] = 2
+        flattened[flattened == -1] = 1
+        return flattened
         
     def intersect_stories(self, story):
         """
@@ -346,10 +407,10 @@ class FlashpointsDataset():
         # We'll avoid breaking up our core dataset here and instead just pass a list of indicies
         story_ixs = np.arange(0, len(self.stories)) 
         self.val = random.choices(story_ixs, k=val_count)
-        np.delete(story_ixs, self.val)
+        story_ixs = np.delete(story_ixs, self.val)
 
         self.test = random.choices(story_ixs, k=test_count)
-        np.delete(story_ixs, self.test)
+        story_ixs = np.delete(story_ixs, self.test)
 
         self.train = story_ixs
 
@@ -412,12 +473,13 @@ class FlashpointsDataset():
         dense = self.lattice[
             story.x : story.x + story.width, 
             story.y : story.y + story.width, 
-            story.depth-1,
+            story.t + story.depth-1,
             self.feature_ixs['label']
             ]
+        
         return dense 
 
-    def split(self):
+    def split(self, val=10, test=10):
         """
         Splitting data for training and evaluation in the context of a potentially self-exciting process as 
         we are dealing with in conflict events is problematic as: 
@@ -439,9 +501,9 @@ class FlashpointsDataset():
         - self.val : matrix to predict on during validation 
         - self.test : matrix for test predictions
         """
-        tqdm.write(f"Splitting dataset... ")
+        tqdm.write(f"Splitting dataset with val @ {val}, test @ {test}... ")
         
-        self.partition_stories(val=10, test=10)
+        self.partition_stories(val=val, test=test)
         
         tqdm.write(f"Done! Post-split counts:\n"\
                    f" - ({len(self.train)} training stories)\n"\
@@ -506,10 +568,12 @@ class FlashpointsDataset():
              raise ValueError(f"Unexpected type {type(obj)} found in {path}!")     
         
         path = os.path.join(dir_,f"fed_{tag}_lattice.npz")            
-        obj.lattice = np.load(path)
+        with np.load(path, encoding='bytes') as data: 
+            obj.lattice = data['arr_0']
 
         path = os.path.join(dir_,f"fed_{tag}_stories.npz")  
-        obj.stories = np.load(path)
+        with np.load(path) as data: 
+            obj.stories = data['arr_0']
 
         return obj
 
