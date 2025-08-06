@@ -203,8 +203,8 @@ class FlashpointsDataset():
         """
         w = self.story_width
 
-        x = random.randrange(max(0, x - w),max(x,1))
-        y = random.randrange(max(0, y - w),max(y,1))
+        x = random.randrange(max(0, x - w + 1),max(x,1))
+        y = random.randrange(max(0, y - w + 1),max(y,1))
 
         # If the story is off the board, clamp it to allow a full-width story
         if x + w > self.x_max: 
@@ -283,10 +283,11 @@ class FlashpointsDataset():
                 t = ixs[2][i]
                 candidate = self.lattice[x,y,t]
 
-                # TODO: use 0 and np.nan here to avoid later conversions
+                # Create a story for every valid labels that leaves us enough room for our 
+                # story brick (dim x,y,t)
                 if candidate[self.feature_ixs['label']] == -1:
                     if quiescent < self.n_quiescent_stories: 
-                        if t >= self.n_start and t < self.n_end: 
+                        if t - self.story_depth + 1 >= self.n_start and t < self.n_end: 
                             x2, y2 = self.randomize_coords(x, y)            
                             self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
                             self.validate_story(ix=quiescent + conflict)
@@ -295,7 +296,7 @@ class FlashpointsDataset():
                 
                 elif candidate[self.feature_ixs['label']] == 1:
                     if conflict < self.n_conflict_stories: 
-                        if t >= self.p_start and t < self.p_end: 
+                        if t - self.story_depth + 1 >= self.p_start and t < self.p_end: 
                             x2, y2 = self.randomize_coords(x, y)                                            
                             self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
                             self.validate_story(ix=quiescent + conflict)           
@@ -472,9 +473,6 @@ class FlashpointsDataset():
             story.t + story.depth-1,
             self.feature_ixs['label']
             ]
-
-        tqdm.write(f"Found {len(dense)} labels, with unique values {np.unique(dense)}, totaling "\
-            f"{dense[dense == -1].shape} negative class labels and {dense[dense == 1].shape} positive class labels")
         
         return dense 
 
