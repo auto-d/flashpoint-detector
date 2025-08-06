@@ -217,6 +217,25 @@ class FlashpointsDataset():
     
         return x, y
     
+    def validate_story(self, story=None, ix=None): 
+        """
+        Sanity check to detect wayward stories at creation or training time 
+        """
+        
+        if ix is not None: 
+            story = self.get_story(ix)
+            
+        # In bounds?
+        assert(story.x <= self.x_max) 
+        assert(story.y <= self.y_max) 
+        assert(story.t >= 0 and story.t <= self.n_end or\
+                story.t >= self.p_start and story.t <= self.p_end)
+        
+        # Concludes with one or more labels? 
+        labels = self.label_story(story)
+        values = np.unique(labels)
+        assert(-1. in values or 1 in values)
+
     def permute_stories(self):         
         """
         Given the raw numpy dataset, discover and memorialize our 'stories' (contiguous blocks of time and space
@@ -235,12 +254,12 @@ class FlashpointsDataset():
         self.y_max = self.lattice.shape[1]
 
         # Boundaries for the negative class - we must have enough room for priors and we have to cut off by the transition 
-        n_start = 0 + self.story_depth
-        n_end = ((self.transition_period[0]) - self.min_date).days
+        self.n_start = 0 + self.story_depth
+        self.n_end = ((self.transition_period[0]) - self.min_date).days
 
         # Boundaries for the positive class - must start after the transition and end before we run out of data!
-        p_start = ((self.transition_period[1]) - self.min_date).days
-        p_end = (self.max_date - self.min_date).days
+        self.p_start = ((self.transition_period[1]) - self.min_date).days
+        self.p_end = (self.max_date - self.min_date).days
 
         tqdm.write(f"Sampling {self.n_quiescent_stories} stories from the pre-war period ({self.min_date} - {self.transition_period[0]},"\
                    f"{self.quiescent_days} days total) and {self.n_conflict_stories} stories from the post-invasion period "\
@@ -267,22 +286,24 @@ class FlashpointsDataset():
                 # TODO: use 0 and np.nan here to avoid later conversions
                 if candidate[self.feature_ixs['label']] == -1:
                     if quiescent < self.n_quiescent_stories: 
-                        if t >= n_start and t < n_end: 
-                            x, y = self.randomize_coords(x, y)            
-                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]
+                        if t >= self.n_start and t < self.n_end: 
+                            x2, y2 = self.randomize_coords(x, y)            
+                            self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
+                            self.validate_story(ix=quiescent + conflict)
                             quiescent += 1
                             progress.update(1)
                 
                 elif candidate[self.feature_ixs['label']] == 1:
                     if conflict < self.n_conflict_stories: 
-                        if t >= p_start and t < p_end: 
-                            x, y = self.randomize_coords(x, y)                                            
-                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]                            
+                        if t >= self.p_start and t < self.p_end: 
+                            x2, y2 = self.randomize_coords(x, y)                                            
+                            self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
+                            self.validate_story(ix=quiescent + conflict)           
                             conflict += 1
                             progress.update(1)
                 else: 
-                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[self.feature_ixs['label']]}!")            
-        
+                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[self.feature_ixs['label']]}!")
+
         tqdm.write("Generation complete!")    
         
     def plot_story(self, story, start=None, end=None, heatmap=False):
@@ -448,9 +469,13 @@ class FlashpointsDataset():
         dense = self.lattice[
             story.x : story.x + story.width, 
             story.y : story.y + story.width, 
-            story.depth-1,
+            story.t + story.depth-1,
             self.feature_ixs['label']
             ]
+
+        tqdm.write(f"Found {len(dense)} labels, with unique values {np.unique(dense)}, totaling "\
+            f"{dense[dense == -1].shape} negative class labels and {dense[dense == 1].shape} positive class labels")
+        
         return dense 
 
     def split(self, val=10, test=10):

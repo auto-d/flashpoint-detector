@@ -137,8 +137,7 @@ def router():
                     nn.save_model(model, args.model_dir)
 
         case  "test":
-            dataset = FlashpointsDataset(args.data_tag)
-            dataset.load(args.data_dir)
+            dataset = FlashpointsDataset.load(args.data_dir, args.data_tag)
             dataset.split() 
             match (args.type): 
                 case 'naive':

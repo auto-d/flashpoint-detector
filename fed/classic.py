@@ -50,18 +50,12 @@ class ClassicEstimator(BaseEstimator):
         """
         tqdm.write(f"Running predictions... ")
 
-        preds = np.zeros((len(ixs), dataset.story_width, dataset.story_width))
-        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
-            story = dataset.get_story(ix)
-            ds = dataset.densify_story(story)
+        preds = np.zeros((len(ixs), dataset.story_width**2))
+        
+        X = dataset.flatten_stories(ixs)
+        preds = self.model.predict(X)
 
-            features = np.mean(ds, axis=2)
-
-            # Restrict our search for matching distributions to non-zero featuresets
-            scores = np.zeros((dataset.story_width, dataset.story_width))
-
-            #
-            self.model.predict()
+        self.score(dataset, preds, ixs)
 
         return preds
     
