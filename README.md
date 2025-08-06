@@ -4,14 +4,11 @@ Ukraine conflict event detection through NASA FIRMS data analysis.
 
 ## TO DO 
 
-- research prior modeling approaches for e.g. weather, etc.. 
-- settle on algorithms for the three required modeling approaches 
-- incorporate elevation data, population centers, and potentially weather to provide the model with the additional information prediction -- consider what else might be salient to the prediction and scare up a data source
-- decide on evaluation criteria 
 - implement naive 
 - implement non-deep learning approach 
 - implement deep learning approach 
 - compare 
+- build demo application 
 - incorporate visualizations from jupyter plots to illustrate temporal splits
 - build presentation 
 - record pitch 
@@ -154,6 +151,9 @@ Positive classes carrying the following labels:
 - h_adm_ua: administrative place name, in Ukrainian
 - h_adm_shape: polygon(s) associated with the named administrative boundary
 - geometry: the geometry of the smallest admin shape associated with the conflict event
+
+
+Essential nature of masking the date, lat/long, to avoid models memorizing contested areas
 
 ### Evaluation 
 - MSE for lat/long
