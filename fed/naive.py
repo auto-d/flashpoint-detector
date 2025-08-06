@@ -6,105 +6,129 @@ from sklearn.base import BaseEstimator
 import matplotlib.pyplot as plt
 import pickle
 from . import similarity
-
+from .dataset import FlashpointsDataset, Story
+from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, accuracy_score
 class NaiveEstimator(BaseEstimator): 
     """
-    Estimator that grabs the most popular items out of the user-item matrix 
-    and vomits them back at prediction time.
+    Estimator that applies an averaging heuristic to record feature distributions 
+    and match them to make predictions. 
     """
+    score_ixs = {
+        'precision': 0, 
+        'recall' : 1, 
+        'f1' : 2,
+        'accuracy': 3
+    }
     
-    def __init__(self):
+    def __init__(self, threshold=0.3):
         """
-        Set up an instance of our naive estimator 
+        Set up an instance of our naive conflict event detector
         """
-        self.item_ratings = None
+        self.conflict_event_threshold = threshold
 
-    def fit(self, train, val, val_chk): 
+    def fit(self, dataset, train_ix, val_ixs): 
         """
-        Fit our naive estimator
-        """ 
-        ui, u_map, i_map = train.gen_affinity_matrix() 
-
-        tqdm.write(f"Fitting model to review data... ")
-        # Assemble a list of the mean ratings for reviewed items
-        item_ratings = [0] * len(i_map)
-        for i in tqdm(i_map.values()): 
-            
-            ratings = []
-            for u in u_map.values(): 
-                if ui[u][i] != 0: 
-                    ratings.append(min(ui[u][i], 5))
-            
-            item_ratings[i] = np.mean(ratings)
+        Train the naive model, which tries to characterizre the distribution of features it sees across every 
+        cell furnished and all time steps (so we'll end up with story_width x story_width baselines) for each 
+        class. During prediction we'll try to match the distribution and predict the class with the best match. 
+        """
+        # Preallocate our feature and label sets
+        features = np.zeros((dataset.story_width, dataset.story_width, dataset.feature_ixs['count'] + 1))    
+        labels = np.zeros((dataset.story_width, dataset.story_width))    
         
-        self.item_ratings = item_ratings
-        self.model_u_map = u_map
-        self.model_i_map = i_map 
-         
+        # Train the naive model on all stories
+        for ix in train_ix: 
+
+            story = dataset.get_story(ix)
+            ds = dataset.densify_story(story)
+            dl = dataset.label_story(story)
+            
+            # Gather the mean feature and label structure for each cell
+            features = features + np.mean(ds, axis=2)
+
+            # TODO: we are presuming anything that's not a positive label is a negative label and we can't really do that, we should only 
+            # be averaging positive labels with negative labels, right? i.e. no reported information doesn't confirm a conflict event isn't 
+            # present
+            labels = labels + dl
+            
+        self.model = {}
+        
+        # Normalize
+        self.model['features'] = np.divide(features, len(dataset.stories))
+        self.model['labels'] = np.divide(labels, len(dataset.stories))
+
         return self
         
-    def recommend(self, ui, k, allow_ixs=None) -> np.ndarray: 
+    def predict(self, dataset, ixs) -> np.ndarray: 
         """
-        Generate top k predictions given a list of item ratings (one per user)        
+        Predict events based on the crude map we put down during training. 
         """
-        recommendations = []
-                
-        tqdm.write(f"Running predictions... ")
-        
-        # Map this (probably smaller and potentially disjoint) item vector into 
-        # our training baseline
-
-        ui, u_map, i_map = ui.gen_affinity_matrix() 
-        
-        # For each requested user, find the best-reviewed items that they have't
-        # already reviewed... 
-        for u in tqdm(range(len(u_map))): 
-            
-            # This new dataset is unlikely to share the same item space as our 
-            # training set. Map the item indices to corresponding indices in our 
-            # item baseline. 
-            new_rated = list(np.nonzero(ui[u])[0]) 
-            rated = similarity.map_keys(i_map, new_rated, self.model_i_map)
-            recommended = []
-            
-            while len(recommended) < k: 
-                best_rated = similarity.argmax(
-                    self.item_ratings, 
-                    exclude=rated + recommended,
-                    include=allow_ixs)
-                recommended.append(best_rated) 
-                
-                # Recommendations need to be in a format suitable for scoring w/ the 
-                # Recommenders MAP@K. I.e. dataframe with cols user, item & rating             
-                row = [
-                    similarity.find_key(u_map, u), 
-                    similarity.find_key(self.model_i_map, best_rated), 
-                    self.item_ratings[best_rated]
-                    ]
-                recommendations.append(row)
-        
-        df = pd.DataFrame(recommendations, columns=['user_id', 'item_id', 'prediction']) 
-        return df 
     
-    def score(self, top_ks, test_chk, k):
+        tqdm.write(f"Generating predictions... ")
+
+        preds = np.zeros((len(ixs), dataset.story_width, dataset.story_width))
+        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
+            story = dataset.get_story(ix)
+            ds = dataset.densify_story(story)
+            
+            # Collapse the temporal dimension, leaving only a scalar (the mean) for each feature
+            features = np.mean(ds, axis=2)       
+
+            # Restrict our search for matching distributions to non-zero featuresets
+            sample_ixs = np.nonzero(ds)
+            model_ixs = np.nonzero(self.model['features'])
+            scores = np.zeros((dataset.story_width, dataset.story_width))
+
+            # For every non-zero feature, find the optimal match from our training distributions
+            for sx, sy in zip(sample_ixs[0], sample_ixs[1]): 
+                for mx, my in zip(model_ixs[0], model_ixs[1]):                     
+
+                    score = similarity.pearson_similarity(features[sx, sy], self.model['features'][mx, my])
+                    if score > scores[sx, sy]: 
+                        
+                        # TODO: validate this again before submission
+                        #print(f"Found better match ({score}) for cell {sx}, {sy}")
+                        #print(f"Compared {features[sx, sy]} with {self.model['features'][mx,my]}")
+
+                        scores[sx, sy] == score
+                        preds[i, sx, sy] = self.model['labels'][mx, my]
+
+        return preds
+    
+    def score(self, dataset, preds, test_ixs):
         """
-        Employ the recommenders library to calculate MAP@K here. 
-        NOTE: Recommenders examples used to source call semantics, see e.g.
-        https://github.com/recommenders-team/recommenders/blob/main/examples/02_model_collaborative_filtering/standard_vae_deep_dive.ipynb
+        Score a set of predictions
         """        
 
-        tqdm.write(f"Scoring recommendations... ")
+        tqdm.write(f"Scoring predictions... ")
+       
+        scores = np.zeros((len(preds), 4))
+        
+        # Iterate over all provided stories. Grab the ground truth and check the predictions
+        # Note we don't penalize (or reward) for cells which we have no ground truth for... 
+        for i, ix in enumerate(test_ixs):
+            
+            story = dataset.get_story(ix)
+            labels = dataset.label_story(story)
+            label_ixs = np.nonzero(labels)
+            
+            y = labels[label_ixs].copy()
+            y[y == -1] = 0
 
-        map = map_at_k(
-            test_chk.df, 
-            top_ks, 
-            col_item="item_id", 
-            col_user="user_id", 
-            col_prediction='prediction', 
-            k=k)
-        tqdm.write(f"MAP@K (k={k}): {map}")
+            y_hat = preds[i][label_ixs]
+                    
+            y_hat[y_hat >= self.conflict_event_threshold] = 1
+            y_hat[y_hat < self.conflict_event_threshold] = 0
 
-        return map
+            scores[i][self.score_ixs['precision']] = precision_score(y, y_hat)
+            scores[i][self.score_ixs['recall']] = recall_score(y, y_hat)
+            scores[i][self.score_ixs['f1']] = f1_score(y, y_hat)
+            scores[i][self.score_ixs['accuracy']] = accuracy_score(y, y_hat)
+
+            print(y, y_hat)        
+            print(f"Story {i} scores = {scores[i]}")
+            
+        return scores
 
 def save_model(model, path):
     """
@@ -136,22 +160,15 @@ def load_model(path):
 
     return model
 
-def train(train, val, val_chk): 
+def train(dataset, train, val): 
     """
     'Train' the naive model 
     """
-    return NaiveEstimator().fit(train, val, val_chk)
+    return NaiveEstimator().fit(dataset, train, val)
 
-def test(model, test, test_chk, top_k):
+def test(model, dataset, test, preds):
     """
     Test the naive model 
     """
-    
-    # We need to constrain comparison here... the matrix is too sparse to expect 
-    # any reasonable rankings otherwise.
-    allow_items = list(test_chk.df.item_id.unique())
-    allow_ixs = [model.model_i_map.get(k) for k in allow_items]        
-    test_k = min(len(allow_items), top_k)
-    
-    top_ks = model.recommend(test, test_k, allow_ixs=allow_ixs)
-    model.score(top_ks, test_chk, test_k)
+    preds = model.predict(dataset, test)
+    model.score(dataset, preds, test)

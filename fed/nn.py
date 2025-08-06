@@ -1,6 +1,4 @@
 import os
-import math 
-from datetime import datetime
 import torch 
 import numpy as np 
 import pandas as pd 
@@ -10,7 +8,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from . import similarity
-from fed.dataset import FlashpointsTorchDataset
+from .dataset import FlashpointsTorchDataset
 
 class Autoencoder(nn.Module):
     """

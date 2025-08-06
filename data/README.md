@@ -1,0 +1,1 @@
+The data directory houses the administrative boundary geodatabase, the flashpoints ukraine dataset (FUD) and the transient copies of the flashpoints event database (FED). Due to their size, they have been omitted from the repository. 

@@ -2,13 +2,11 @@
 
 import argparse 
 import os
-import tempfile
-import glob
 from . import naive
 from . import classic 
 from . import nn
-from fed.dataset import FlashpointsDataset, FlashpointsTorchDataset
-from fed.process import run_subprocess
+from .dataset import FlashpointsDataset, FlashpointsTorchDataset
+from .process import run_subprocess
 from . import demo
 
 def deploy(share=False, data_tag="test"): 
@@ -60,20 +58,26 @@ def nonexistent_dir(path):
 def build_parser(): 
     """
     Apply a command-line schema, returning a parser
+
+    NOTE: Parser setup based on work from prior assignments 
     """
-    parser = argparse.ArgumentParser("deepcart", description="Amazon electronics recommendations via variational autoencoder")
+    parser = argparse.ArgumentParser("fed", description="Flashpoints Ukraine event predictor")
 
     subparsers = parser.add_subparsers(dest="mode", required=True)
 
     # Build mode 
     build_parser = subparsers.add_parser("build") 
-    build_parser.add_argument("--sample-n", type=int, help="Number of users to sample from the total", default=10000, required=False)
-    build_parser.add_argument("--output-dir", type=readable_dir, help="Directory to write resulting dataset to", default="data/processed", required=False)
+    build_parser.add_argument("--sample-n", type=int, help="Number of detections (stories) to sample per class", default=10000, required=False)
+    build_parser.add_argument("--spatial-step", type=float, help="Size of one spacial step, in decimal degrees", default=0.05, required=False)
+    build_parser.add_argument("--temporal-step", type=int, help="Number of temporal step, in days", default=1, required=False)
+    build_parser.add_argument("--ukraine-shapefile", type=str, help="Path to Ukraine administrative boundaries", default="data/ukr_admbnd_sspe_20240416_AB_GDB.gdb", required=False)
+    
+    build_parser.add_argument("--output-dir", type=readable_dir, help="Directory to write resulting dataset to", default="data/", required=False)
     build_parser.add_argument("--tag", type=str, help="Friendly name to tag dataset names with", required=True)
 
     # Train mode 
     train_parser = subparsers.add_parser("train") 
-    train_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/processed", required=False)
+    train_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/", required=False)
     train_parser.add_argument("--data-tag", type=str, help="Dataset tag to look for (set during creation)", required=True)
     train_parser.add_argument("--model-dir", help="Directory to write resulting model to", default="models")
     train_parser.add_argument("--nn-epochs", type=int, default=1)
@@ -83,7 +87,7 @@ def build_parser():
     # Test mode 
     test_parser = subparsers.add_parser("test") 
     test_parser.add_argument("--model_dir", type=readable_dir, help="Directory to load model from", default="models")
-    test_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/processed", required=False)    
+    test_parser.add_argument("--data-dir", type=readable_dir, help="Directory to look for tagged dataset", default="data/", required=False)    
     test_parser.add_argument("--data-tag", type=str, help="Dataset tag to look for (set during creation)", required=True)
     test_parser.add_argument("--type", choices=['naive', 'classic', 'neural'], default='neural')
 
@@ -98,8 +102,8 @@ def router():
     """
     Argument processor and router
 
-    @NOTE: Argparsing with help from chatgpt: https://chatgpt.com/share/685ee2c0-76c8-8013-abae-304aa04b0eb1
-    @NOTE: arg parsing logic incorporates work from prior 540 assignments
+    NOTE: Argparsing with help from chatgpt: https://chatgpt.com/share/685ee2c0-76c8-8013-abae-304aa04b0eb1
+    NOTE: arg parsing logic incorporates work from prior 540 assignments
     """
 
     parser = build_parser() 
@@ -107,21 +111,24 @@ def router():
     
     match(args.mode):
         case "build":
-            dataset = FlashpointsDataset(args.tag)
-            dataset.load()
+            dataset = FlashpointsDataset(
+                args.tag, 
+                spatial_step=args.spatial_step, 
+                temporal_step=args.temporal_step,
+                n_quiescent_stories=args.sample_n, n_conflict_stories=args.sample_n)
+            dataset.build(args.ukraine_shapefile)
             dataset.store(args.output_dir)
 
         case "train":
-            dataset = FlashpointsDataset(args.data_tag)
-            dataset.load()
+            dataset = FlashpointsDataset.load(args.data_dir, args.data_tag)
             dataset.split()
 
             match(args.type): 
                 case 'naive':
-                    model = naive.train(dataset.train, dataset.val)
+                    model = naive.train(dataset, dataset.train, dataset.val)
                     naive.save_model(model, args.model_dir)
                 case 'classic':
-                    model = classic.train(dataset.train, dataset.val) 
+                    model = classic.train(dataset, dataset.train, dataset.val) 
                     classic.save_model(model, args.model_dir)
                 case 'neural': 
                     torch_dataset = FlashpointsTorchDataset(matrix=dataset.train, batch_size=args.nn_batch)
@@ -135,10 +142,10 @@ def router():
             match (args.type): 
                 case 'naive':
                     model = naive.load_model(args.model_dir)
-                    naive.test(model, dataset.test)
+                    naive.test(dataset, model, dataset.test)
                 case 'classic':
                     model = classic.load_model(args.model_dir)
-                    classic.test(model, dataset.test) 
+                    classic.test(dataset, model, dataset.test) 
                 case 'neural': 
                     model = nn.load_model(args.model_dir)
                     torch_dataset = FlashpointsTorchDataset(dataset)
