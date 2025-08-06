@@ -316,7 +316,7 @@ class FlashpointsDataset():
         new features against the challenges of pushing rich 4d data through a classic 
         estimator like a random forest.
         """
-        flattened = np.zeros((len(ixs), self.story_width * 2 * len(self.feature_ixs)))
+        flattened = np.zeros((len(ixs), self.story_width** 2 * (len(self.feature_ixs)-1)))
         for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
             story = self.get_story(ix)
             ds = self.densify_story(story) 
@@ -324,7 +324,20 @@ class FlashpointsDataset():
             # Flatten our features through averaging to make this approachable. Note this is a large
             # feature matrix (2800 columns in the 'small' configuration). Beware attempting
             # this at higher spatial resolutions accordingly. 
-            flattened[i] = np.mean(ds, axis=2)
+            flattened[i] = np.mean(ds, axis=2).flatten()
+        return flattened
+    
+    def flatten_labels(self, ixs):
+        """
+        As with story flattener above, we need to offer a flattened data type for models that 
+        can't handle the dimensionality of what is now our native view (4d)
+        """
+        flattened = np.zeros((len(ixs), self.story_width** 2))
+        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
+            story = self.get_story(ix)
+            dl = self.label_story(story)
+            
+            flattened[i] = dl.flatten()
         return flattened
         
     def intersect_stories(self, story):
@@ -369,10 +382,10 @@ class FlashpointsDataset():
         # We'll avoid breaking up our core dataset here and instead just pass a list of indicies
         story_ixs = np.arange(0, len(self.stories)) 
         self.val = random.choices(story_ixs, k=val_count)
-        np.delete(story_ixs, self.val)
+        story_ixs = np.delete(story_ixs, self.val)
 
         self.test = random.choices(story_ixs, k=test_count)
-        np.delete(story_ixs, self.test)
+        story_ixs = np.delete(story_ixs, self.test)
 
         self.train = story_ixs
 
@@ -440,7 +453,7 @@ class FlashpointsDataset():
             ]
         return dense 
 
-    def split(self):
+    def split(self, val=10, test=10):
         """
         Splitting data for training and evaluation in the context of a potentially self-exciting process as 
         we are dealing with in conflict events is problematic as: 
@@ -462,9 +475,9 @@ class FlashpointsDataset():
         - self.val : matrix to predict on during validation 
         - self.test : matrix for test predictions
         """
-        tqdm.write(f"Splitting dataset... ")
+        tqdm.write(f"Splitting dataset with val @ {val}, test @ {test}... ")
         
-        self.partition_stories(val=10, test=10)
+        self.partition_stories(val=val, test=test)
         
         tqdm.write(f"Done! Post-split counts:\n"\
                    f" - ({len(self.train)} training stories)\n"\
@@ -529,10 +542,12 @@ class FlashpointsDataset():
              raise ValueError(f"Unexpected type {type(obj)} found in {path}!")     
         
         path = os.path.join(dir_,f"fed_{tag}_lattice.npz")            
-        obj.lattice = np.load(path)
+        with np.load(path, encoding='bytes') as data: 
+            obj.lattice = data['arr_0']
 
         path = os.path.join(dir_,f"fed_{tag}_stories.npz")  
-        obj.stories = np.load(path)
+        with np.load(path) as data: 
+            obj.stories = data['arr_0']
 
         return obj
 
