@@ -131,8 +131,9 @@ def router():
                     model = classic.train(dataset, dataset.train, dataset.val) 
                     classic.save_model(model, args.model_dir)
                 case 'neural': 
-                    torch_dataset = FlashpointsTorchDataset(matrix=dataset.train, batch_size=args.nn_batch)
-                    model = nn.train(torch_dataset, args.nn_epochs, dataset.val)
+                    train = FlashpointsTorchDataset(dataset, dataset.train, batch_size=args.nn_batch)
+                    val = FlashpointsTorchDataset(dataset, dataset.val, batch_size=args.nn_batch)                    
+                    model = nn.train(train, val, args.nn_epochs)
                     nn.save_model(model, args.model_dir)
 
         case  "test":
@@ -148,7 +149,7 @@ def router():
                     classic.test(dataset, model, dataset.test) 
                 case 'neural': 
                     model = nn.load_model(args.model_dir)
-                    torch_dataset = FlashpointsTorchDataset(dataset)
+                    torch_dataset = FlashpointsTorchDataset(dataset, dataset.test)
                     nn.test(model, torch_dataset, dataset.test)
 
         case "deploy":

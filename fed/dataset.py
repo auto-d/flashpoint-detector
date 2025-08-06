@@ -97,6 +97,8 @@ class FlashpointsDataset():
         # period and consider the 24th the first day of escalated belligerence and overt war. 
         self.transition_period = (pd.Timestamp(year=2022, month=2, day=1), pd.Timestamp(year=2022, month=2, day=23))
 
+        self.scaled = False
+
     def download_fud(self, force=False):
         """
         Retrieve the latest version of the dataset from its home on kaggle, 
@@ -376,9 +378,12 @@ class FlashpointsDataset():
         within the range [0,1]
         """
         
-        # Iterate over our feature indices and scale each by the max value 
-        for ix in self.feature_ixs.values(): 
-            self.lattice[:,:,:,ix] = self.lattices[:,:,:,ix] / np.max(self.lattices[:,:,:,ix])
+        if not self.scaled: 
+            # Iterate over our feature indices and scale each by the max value 
+            for ix in self.feature_ixs.values(): 
+                self.lattice[:,:,:,ix] = self.lattices[:,:,:,ix] / np.max(self.lattices[:,:,:,ix])
+
+        self.scaled = True 
     
     def densify_story(self, story): 
         """

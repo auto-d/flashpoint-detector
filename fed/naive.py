@@ -8,6 +8,7 @@ import pickle
 from . import similarity
 from .dataset import FlashpointsDataset, Story
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, accuracy_score
+
 class NaiveEstimator(BaseEstimator): 
     """
     Estimator that applies an averaging heuristic to record feature distributions 
