@@ -7,7 +7,7 @@ from . import classic
 from . import nn
 from .dataset import FlashpointsDataset, FlashpointsTorchDataset
 from .process import run_subprocess
-from . import demo
+from .demo import demo
 
 def deploy(share=False, data_tag="test"): 
     """

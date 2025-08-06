@@ -203,8 +203,8 @@ class FlashpointsDataset():
         """
         w = self.story_width
 
-        x = random.randrange(max(0, x - w + 1),max(x,1))
-        y = random.randrange(max(0, y - w + 1),max(y,1))
+        x = random.randrange(max(0, x - w),max(x,1))
+        y = random.randrange(max(0, y - w),max(y,1))
 
         # If the story is off the board, clamp it to allow a full-width story
         if x + w > self.x_max: 
@@ -217,25 +217,6 @@ class FlashpointsDataset():
     
         return x, y
     
-    def validate_story(self, story=None, ix=None): 
-        """
-        Sanity check to detect wayward stories at creation or training time 
-        """
-        
-        if ix is not None: 
-            story = self.get_story(ix)
-            
-        # In bounds?
-        assert(story.x <= self.x_max) 
-        assert(story.y <= self.y_max) 
-        assert(story.t >= 0 and story.t <= self.n_end or\
-                story.t >= self.p_start and story.t <= self.p_end)
-        
-        # Concludes with one or more labels? 
-        labels = self.label_story(story)
-        values = np.unique(labels)
-        assert(-1. in values or 1 in values)
-
     def permute_stories(self):         
         """
         Given the raw numpy dataset, discover and memorialize our 'stories' (contiguous blocks of time and space
@@ -254,12 +235,12 @@ class FlashpointsDataset():
         self.y_max = self.lattice.shape[1]
 
         # Boundaries for the negative class - we must have enough room for priors and we have to cut off by the transition 
-        self.n_start = 0 + self.story_depth
-        self.n_end = ((self.transition_period[0]) - self.min_date).days
+        n_start = 0 + self.story_depth
+        n_end = ((self.transition_period[0]) - self.min_date).days
 
         # Boundaries for the positive class - must start after the transition and end before we run out of data!
-        self.p_start = ((self.transition_period[1]) - self.min_date).days
-        self.p_end = (self.max_date - self.min_date).days
+        p_start = ((self.transition_period[1]) - self.min_date).days
+        p_end = (self.max_date - self.min_date).days
 
         tqdm.write(f"Sampling {self.n_quiescent_stories} stories from the pre-war period ({self.min_date} - {self.transition_period[0]},"\
                    f"{self.quiescent_days} days total) and {self.n_conflict_stories} stories from the post-invasion period "\
@@ -283,28 +264,25 @@ class FlashpointsDataset():
                 t = ixs[2][i]
                 candidate = self.lattice[x,y,t]
 
-                # Create a story for every valid labels that leaves us enough room for our 
-                # story brick (dim x,y,t)
+                # TODO: use 0 and np.nan here to avoid later conversions
                 if candidate[self.feature_ixs['label']] == -1:
                     if quiescent < self.n_quiescent_stories: 
-                        if t - self.story_depth + 1 >= self.n_start and t < self.n_end: 
-                            x2, y2 = self.randomize_coords(x, y)            
-                            self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
-                            self.validate_story(ix=quiescent + conflict)
+                        if t >= n_start and t < n_end: 
+                            x, y = self.randomize_coords(x, y)            
+                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]
                             quiescent += 1
                             progress.update(1)
                 
                 elif candidate[self.feature_ixs['label']] == 1:
                     if conflict < self.n_conflict_stories: 
-                        if t - self.story_depth + 1 >= self.p_start and t < self.p_end: 
-                            x2, y2 = self.randomize_coords(x, y)                                            
-                            self.stories[quiescent + conflict] = [x2,y2,t-self.story_depth+1]
-                            self.validate_story(ix=quiescent + conflict)           
+                        if t >= p_start and t < p_end: 
+                            x, y = self.randomize_coords(x, y)                                            
+                            self.stories[quiescent + conflict] = [x,y,t-self.story_depth]                            
                             conflict += 1
                             progress.update(1)
                 else: 
-                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[self.feature_ixs['label']]}!")
-
+                    raise ValueError(f"Unknown label encountered when selecting stories: {candidate[self.feature_ixs['label']]}!")            
+        
         tqdm.write("Generation complete!")    
         
     def plot_story(self, story, start=None, end=None, heatmap=False):
@@ -325,45 +303,6 @@ class FlashpointsDataset():
         kwargs = { 'c': values, 'cmap': 'magma' } if heatmap else {}
 
         plt.scatter(x0, y0, **kwargs)
-        
-    def flatten_stories(self, ixs):
-        """
-        Flatten provided stories using feature averaging. 
-        
-        We started with a rather nicely curated geodataframe and had to mine it
-        to create our spatiotemporal bricks ('stories') to power a deeper analysis
-        yet still achieve a fixed-width representation. The volume of this new data
-        is problematic for classic models which want to eat all their data in one sitting
-        Here we'll create a streamlined dataframe which balances the richness of the 
-        new features against the challenges of pushing rich 4d data through a classic 
-        estimator like a random forest.
-        """
-        flattened = np.zeros((len(ixs), self.story_width** 2 * (len(self.feature_ixs)-1)))
-        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
-            story = self.get_story(ix)
-            ds = self.densify_story(story) 
-            
-            # Flatten our features through averaging to make this approachable. Note this is a large
-            # feature matrix (2800 columns in the 'small' configuration). Beware attempting
-            # this at higher spatial resolutions accordingly. 
-            flattened[i] = np.mean(ds, axis=2).flatten()
-        return flattened
-    
-    def flatten_labels(self, ixs, categories=False):
-        """
-        As with story flattener above, we need to offer a flattened data type for models that 
-        can't handle the dimensionality of what is now our native view (4d)
-        """
-        flattened = np.zeros((len(ixs), self.story_width** 2))
-        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
-            story = self.get_story(ix)
-            dl = self.label_story(story)
-            
-            flattened[i] = dl.flatten()
-        
-        flattened[flattened == 1] = 2
-        flattened[flattened == -1] = 1
-        return flattened
         
     def intersect_stories(self, story):
         """
@@ -407,10 +346,10 @@ class FlashpointsDataset():
         # We'll avoid breaking up our core dataset here and instead just pass a list of indicies
         story_ixs = np.arange(0, len(self.stories)) 
         self.val = random.choices(story_ixs, k=val_count)
-        story_ixs = np.delete(story_ixs, self.val)
+        np.delete(story_ixs, self.val)
 
         self.test = random.choices(story_ixs, k=test_count)
-        story_ixs = np.delete(story_ixs, self.test)
+        np.delete(story_ixs, self.test)
 
         self.train = story_ixs
 
@@ -473,13 +412,12 @@ class FlashpointsDataset():
         dense = self.lattice[
             story.x : story.x + story.width, 
             story.y : story.y + story.width, 
-            story.t + story.depth-1,
+            story.depth-1,
             self.feature_ixs['label']
             ]
-        
         return dense 
 
-    def split(self, val=10, test=10):
+    def split(self):
         """
         Splitting data for training and evaluation in the context of a potentially self-exciting process as 
         we are dealing with in conflict events is problematic as: 
@@ -501,9 +439,9 @@ class FlashpointsDataset():
         - self.val : matrix to predict on during validation 
         - self.test : matrix for test predictions
         """
-        tqdm.write(f"Splitting dataset with val @ {val}, test @ {test}... ")
+        tqdm.write(f"Splitting dataset... ")
         
-        self.partition_stories(val=val, test=test)
+        self.partition_stories(val=10, test=10)
         
         tqdm.write(f"Done! Post-split counts:\n"\
                    f" - ({len(self.train)} training stories)\n"\
@@ -568,185 +506,12 @@ class FlashpointsDataset():
              raise ValueError(f"Unexpected type {type(obj)} found in {path}!")     
         
         path = os.path.join(dir_,f"fed_{tag}_lattice.npz")            
-        with np.load(path, encoding='bytes') as data: 
-            obj.lattice = data['arr_0']
+        obj.lattice = np.load(path)
 
         path = os.path.join(dir_,f"fed_{tag}_stories.npz")  
-        with np.load(path) as data: 
-            obj.stories = data['arr_0']
+        obj.stories = np.load(path)
 
-        return obj
-
-    def make_box(self, x=30.0, y=47.0, z=0, w=2, h=4):
-        """
-        Create a box to illustrate our spatiotemporal cross-validation strategy
-
-        NOTE: setup of box geometry suitable for matplotlib courtesy of gpt-4o, part of the 
-        larger conversation on rendering spatial data with matplotlib et al: 
-        https://chatgpt.com/share/688cddab-ae9c-8013-ac1a-6b9211e72971
-        """ 
-
-        # Make boundaries 
-        x0, x1 = x, x+w
-        y0, y1 = y, y+w
-        z0, z1 = z, z+h
-
-        # Build the corners 
-        corners = [
-            [x0, y0, z0],
-            [x1, y0, z0],
-            [x1, y1, z0],
-            [x0, y1, z0],
-            [x0, y0, z1],
-            [x1, y0, z1],
-            [x1, y1, z1],
-            [x0, y1, z1],
-        ]
-
-        # Make assoc'd faces 
-        faces = [
-            [corners[0], corners[1], corners[2], corners[3]],  # bottom
-            [corners[4], corners[5], corners[6], corners[7]],  # top
-            [corners[0], corners[1], corners[5], corners[4]],  # front
-            [corners[2], corners[3], corners[7], corners[6]],  # back
-            [corners[1], corners[2], corners[6], corners[5]],  # right
-            [corners[0], corners[3], corners[7], corners[4]],  # left
-        ]
-
-        return faces 
-    
-    def render_box(self, box): 
-        """
-        Helper to visualize a box constructed by make_box
-        """                
-        block_color = (1, 0, 0, 0.3)  # semi-transparent red, courtesy of gpt-4o
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-
-        box = Poly3DCollection(box, facecolors=(1, 0, 0, 0.3), edgecolors='r')
-        ax.add_collection3d(box)
-
-        # Set axis limits and labels
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
-        ax.set_zlim(0, 5)
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-
-        plt.tight_layout()
-        
-    def set_axes_range(self, ax): 
-        """
-        We need to adjust the axes range to keep things proportional, matplotlib doesn't do this by 
-        default. 
-        NOTE: This hack courtesy of gpt-4o. See link in make_box()
-        """
-        x_limits = ax.get_xlim3d()
-        y_limits = ax.get_ylim3d()
-        z_limits = ax.get_zlim3d()
-
-        ax.set_xlim(x_limits[0], x_limits[1])
-        ax.set_ylim(y_limits[0], y_limits[1])
-        ax.set_zlim(z_limits[0], z_limits[1])        
-
-    def temporal_scatter(self, gdf, n_dates=10):
-        """
-        Create a scatter plot of x,ys (presumed to be the active geometry in the supplied DF)
-        using a date column. 
-
-        NOTE: Geopandas and matplotlib maneuvering with help from gpt-4o: 
-        https://chatgpt.com/share/688cddab-ae9c-8013-ac1a-6b9211e72971
-        """
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-
-        dates = sorted(gdf['date'].unique())
-        for i, date in enumerate(dates):
-            if i >= n_dates:
-                break 
-
-            slice_df = gdf[gdf['date'] == date]
-            xs = slice_df.geometry.x
-            ys = slice_df.geometry.y
-            zs = np.full_like(xs, i)
-            ax.scatter(xs, ys, zs, label=f'Date {date}', depthshade=True)
-
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Date')
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
-
-    def temporal_scatter_w_poly(self, gdf, geom, n_dates=3, color_map='OrRd', box=None, edge='r'): 
-        """
-        Plot x/y coordinates for date groupings with reference geometry for the 
-        first n dates (oldest to newest). Presumes we have a 'date' column in the 
-        supplied df. Also accepts a set of faces to plot in the box param, constructed
-        ideally w/ make_box(). 
-        """
-
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        
-        dates = sorted(gdf['date'].unique())
-        
-        cmap = cm.get_cmap(color_map, n_dates)
-        norm = mcolors.Normalize(vmin=0, vmax=n_dates)
-        ix_to_color = {t: cmap(norm(t)) for t in range(n_dates)}
-        
-        for i, date in enumerate(dates):    
-            if i >= n_dates:
-                break 
-            
-            color = ix_to_color[i]
-        
-            # Plot polygons associated with whatever geometry we've been given    
-            polys = list(geom.geoms)
-        
-            for poly in polys:
-                x, y = poly.exterior.xy
-                z = [i] * len(x)
-                verts = [list(zip(x, y, z))]
-                ax.add_collection3d(Poly3DCollection(verts, alpha=0.5, facecolor=color))
-            
-            # Slice DF along dates
-            date_df = gdf[gdf['date'] == date]
-        
-            # Plot associated detections     
-            xs = date_df.location.x
-            ys = date_df.location.y
-            zs = np.full_like(xs, i)
-            ax.scatter(xs, ys, zs, color=color, label=f'Date {date}', depthshade=True)
-        
-        # If we've been given a prismbox to render, shim it in there
-        if box is not None: 
-            block_color = (1, 0, 0, 0.3)  # semi-transparent red, courtesy of gpt-4o
-            prism = Poly3DCollection(box, facecolors=block_color, edgecolors=edge)
-            ax.add_collection3d(prism)
-
-        # Adjust the extents to ensure scale in the x/y and zoom to the polygon provided... 
-        xmin, ymin, xmax, ymax = geom.bounds
-        x_span = xmax-xmin
-        y_span = ymax-ymin 
-
-        # if x_span > y_span: 
-        #     ax.set_xlim(xmin, xmax)
-        #     ax.set_ylim(ymin-x_span/2, ymax+x_span/2)
-        # elif y_span > x_span: 
-        #     ax.set_xlim(xmin-y_span/2, xmax+y_span/2)
-        #     ax.set_ylim(ymin, ymax)
-
-        ax.set_box_aspect([1, 1, 1])
-        ax.set_xlabel('Lon')
-        ax.set_ylabel('Lat')
-        ax.set_zlabel('Date')
-        plt.legend()
-        ax.set_zlim(0, n_dates + 1)
-        plt.tight_layout()
-        plt.show()        
+        return obj     
 
 class FlashpointsTorchDataset(torch.utils.data.Dataset):
     """
