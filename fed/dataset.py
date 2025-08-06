@@ -349,7 +349,7 @@ class FlashpointsDataset():
             flattened[i] = np.mean(ds, axis=2).flatten()
         return flattened
     
-    def flatten_labels(self, ixs):
+    def flatten_labels(self, ixs, categories=False):
         """
         As with story flattener above, we need to offer a flattened data type for models that 
         can't handle the dimensionality of what is now our native view (4d)
@@ -360,6 +360,9 @@ class FlashpointsDataset():
             dl = self.label_story(story)
             
             flattened[i] = dl.flatten()
+        
+        flattened[flattened == 1] = 2
+        flattened[flattened == -1] = 1
         return flattened
         
     def intersect_stories(self, story):

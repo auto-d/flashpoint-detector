@@ -9,6 +9,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.ensemble import RandomForestClassifier
 from . import similarity
 from . import naive
+from xgboost import XGBClassifier
 
 class ClassicEstimator(BaseEstimator):
     """
@@ -17,11 +18,13 @@ class ClassicEstimator(BaseEstimator):
     the Ukraine data
     """ 
     
-    def __init__(self):
+    def __init__(self, mtype='rf'):
         """
-        Initialize a new instance of the model 
+        Initialize a new instance of the model, with either a vanilla random forest 
+        or XGboost implementations
         """
         self.model = None
+        self.mtype = mtype
     
     def fit(self, dataset, train, val): 
         """
@@ -29,16 +32,22 @@ class ClassicEstimator(BaseEstimator):
         core data abstraction class which probides help along the way for transformations
         and lookups. 
         """ 
-
         tqdm.write(f"Flattening {len(train)} stories in preparation for training...")
         X = dataset.flatten_stories(train)
-        y = dataset.flatten_labels(train)
+        y = dataset.flatten_labels(train, categories=True)
         
         tqdm.write(f"Flattening complete! New training shape is {X.shape}, new label shape is {y.shape}.")
 
-        tqdm.write(f"Fitting random forest...")
-        self.model = RandomForestClassifier(max_depth=10, random_state=42)
-        self.model.fit(X, y)
+        tqdm.write(f"Fitting classifier (type={self.mtype})...")
+        if self.mtype == "xgb": 
+            self.model = XGBClassifier(
+                tree_method="hist", 
+                num_classes=3
+                )
+            self.model.fit(X, y)
+        else: 
+            self.model = RandomForestClassifier()
+            self.model.fit(X, y)
 
         tqdm.write("Training complete!")
 
