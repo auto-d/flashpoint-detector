@@ -4,10 +4,7 @@ Ukraine conflict event detection through NASA FIRMS data analysis.
 
 ## TO DO 
 
-- implement naive 
-- implement non-deep learning approach 
-- implement deep learning approach 
-- compare 
+- implement classic method
 - build demo application 
 - incorporate visualizations from jupyter plots to illustrate temporal splits
 - build presentation 

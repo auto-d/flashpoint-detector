@@ -97,6 +97,8 @@ class FlashpointsDataset():
         # period and consider the 24th the first day of escalated belligerence and overt war. 
         self.transition_period = (pd.Timestamp(year=2022, month=2, day=1), pd.Timestamp(year=2022, month=2, day=23))
 
+        self.scaled = False
+
     def download_fud(self, force=False):
         """
         Retrieve the latest version of the dataset from its home on kaggle, 
@@ -185,6 +187,8 @@ class FlashpointsDataset():
             # class. 
             count = self.lattice[x, y, d][self.feature_ixs['count']]
             self.lattice[x, y, d] = (self.lattice[x, y, d] * count + feature) / (count + 1)
+            
+            # TODO: check up on this label application to ensure we're carrying the right values forward
             self.lattice[x, y, d][self.feature_ixs['label']] = label
             self.lattice[x, y, d][self.feature_ixs['count']] = count + 1
         
@@ -352,6 +356,8 @@ class FlashpointsDataset():
         # TODO: clean all test stories with intersect_stories and invent a solution to the 
         # lost index problem 
 
+        return self.train, self.val, self.test
+
     def get_story(self, ix): 
         story =  Story(
             depth=self.story_depth,
@@ -366,6 +372,19 @@ class FlashpointsDataset():
         
         return story 
 
+    def scale_features(self): 
+        """
+        Irrevocably switch the dataset to scaled float mode, where all features are normalized to a float
+        within the range [0,1]
+        """
+        
+        if not self.scaled: 
+            # Iterate over our feature indices and scale each by the max value 
+            for ix in self.feature_ixs.values(): 
+                self.lattice[:,:,:,ix] = self.lattices[:,:,:,ix] / np.max(self.lattices[:,:,:,ix])
+
+        self.scaled = True 
+    
     def densify_story(self, story): 
         """
         Retrieve a dense representation of the story, sans labels. 
@@ -379,7 +398,8 @@ class FlashpointsDataset():
             story.t : story.t + story.depth,
             0:self.feature_ixs['count'] + 1
             ]
-        return dense 
+
+        return dense
 
     def label_story(self, story): 
         """
@@ -667,30 +687,36 @@ class FlashpointsDataset():
 class FlashpointsTorchDataset(torch.utils.data.Dataset):
     """
     Torch-compatible dataset to capitalize on the former's abstraction of batching, 
-    parallelism and shuffling memory to GPU & back
+    parallelism and shuffling memory to GPU & back. 
+
+    NOTE: the shell of this class has been repurposed multiple times in prior assignments
     """
 
-    def __init__(self, fud:FlashpointsDataset, batch_size=10): 
+    def __init__(self, dataset:FlashpointsDataset, ixs, batch_size=10): 
         """
-        Initialize a new instance given flashpoints dataset object
+        Initialize a new instance given flashpoints dataset object and the in-bounds
+        indices. Use of indicies avoids copying large numpy arrays around, in practice 
+        it will be one of train, val, test subsets of the dataset's stories object. 
         """
         self.batch_size = batch_size
+        self.ixs = ixs
+        self.dataset = dataset
         
-        self.fud = fud
+        # Irrevocable 
+        dataset.scale_features()
 
     def __len__(self): 
         """
         Retrieve length of the dataset
         """
-        return len(self.fud) 
+        return len(self.dataset.stories) 
     
     def __getitem__(self, idx): 
         """
         Retrieve an item at the provided index
         """
-        row = self.fud.iloc[idx]
-        # TODO: Normalize, scale, etc? 
-        return row
+        story = self.dataset.get_story(self.ixs[idx])
+        return self.dataset.densify_story(story)
     
     def get_data_loader(self, shuffle=True): 
         """
