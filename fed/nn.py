@@ -197,7 +197,7 @@ class FlashpointsEstimator():
         Score our predictions
         """        
 
-        return naive.score(dataset, preds, test_ixs)
+        return similarity.score(dataset, preds, test_ixs)
 
 def save_model(model, path):
     """

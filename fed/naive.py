@@ -7,25 +7,17 @@ import matplotlib.pyplot as plt
 import pickle
 from . import similarity
 from .dataset import FlashpointsDataset, Story
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, accuracy_score
 
 class NaiveEstimator(BaseEstimator): 
     """
     Estimator that applies an averaging heuristic to record feature distributions 
     and match them to make predictions. 
     """
-    score_ixs = {
-        'precision': 0, 
-        'recall' : 1, 
-        'f1' : 2,
-        'accuracy': 3
-    }
     
-    def __init__(self, threshold=0.3):
+    def __init__(self):
         """
         Set up an instance of our naive conflict event detector
         """
-        self.conflict_event_threshold = threshold
 
     def fit(self, dataset, train_ix, val_ixs): 
         """
@@ -99,37 +91,9 @@ class NaiveEstimator(BaseEstimator):
     def score(self, dataset, preds, test_ixs):
         """
         Score a set of predictions
-        """        
-
-        tqdm.write(f"Scoring predictions... ")
+        """       
        
-        scores = np.zeros((len(preds), 4))
-        
-        # Iterate over all provided stories. Grab the ground truth and check the predictions
-        # Note we don't penalize (or reward) for cells which we have no ground truth for... 
-        for i, ix in enumerate(test_ixs):
-            
-            story = dataset.get_story(ix)
-            labels = dataset.label_story(story)
-            label_ixs = np.nonzero(labels)
-            
-            y = labels[label_ixs].copy()
-            y[y == -1] = 0
-
-            y_hat = preds[i][label_ixs]
-                    
-            y_hat[y_hat >= self.conflict_event_threshold] = 1
-            y_hat[y_hat < self.conflict_event_threshold] = 0
-
-            scores[i][self.score_ixs['precision']] = precision_score(y, y_hat)
-            scores[i][self.score_ixs['recall']] = recall_score(y, y_hat)
-            scores[i][self.score_ixs['f1']] = f1_score(y, y_hat)
-            scores[i][self.score_ixs['accuracy']] = accuracy_score(y, y_hat)
-
-            print(y, y_hat)        
-            print(f"Story {i} scores = {scores[i]}")
-            
-        return scores
+        return similarity.score(dataset, preds, test_ixs)        
 
 def save_model(model, path):
     """

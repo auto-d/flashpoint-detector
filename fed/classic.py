@@ -49,8 +49,6 @@ class ClassicEstimator(BaseEstimator):
         Generate classifications for the provided stories
         """
         tqdm.write(f"Running predictions... ")
-
-        preds = np.zeros((len(ixs), dataset.story_width**2))
         
         X = dataset.flatten_stories(ixs)
         preds = self.model.predict(X)
@@ -63,7 +61,7 @@ class ClassicEstimator(BaseEstimator):
         """
         Score our predictions - same logic applied in our naive model
         """        
-        return naive.score(dataset, preds, test_ixs)
+        return similarity.score(dataset, preds, test_ixs)
 
 def save_model(model, path):
     """
