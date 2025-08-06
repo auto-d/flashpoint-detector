@@ -17,7 +17,7 @@ class FlashpointsCNN(nn.Module):
     Convolutional neural network to infer and act on relationships in the flashpoints
     event database. 
     
-    Base CNN network geometry courtesy of Huang et al: 
+    Base loosely CNN network geometry described by Huang et al: 
     [4] Huang JP., Wang XA., Zhao Y., Xin C., Xiang H. (China) 
     Large earthquake magnitude prediction in Taiwan based on deep learning neural network, 149-160
     https://nnw.cz/doi/2018/NNW.2018.28.009.pdf
@@ -28,7 +28,7 @@ class FlashpointsCNN(nn.Module):
         Construct our network 
 
         N/batch : batch dimension 
-        C/channels : we will assign a chanell to each feature in our story
+        C/channels : we will assign a channel to each feature in our story
         D/depth : this will be our temporal dimension
         H/W : this is our square spatial dimension
         """
