@@ -304,6 +304,29 @@ class FlashpointsDataset():
 
         plt.scatter(x0, y0, **kwargs)
         
+    def flatten_stories(self, ixs):
+        """
+        Flatten provided stories using feature averaging. 
+        
+        We started with a rather nicely curated geodataframe and had to mine it
+        to create our spatiotemporal bricks ('stories') to power a deeper analysis
+        yet still achieve a fixed-width representation. The volume of this new data
+        is problematic for classic models which want to eat all their data in one sitting
+        Here we'll create a streamlined dataframe which balances the richness of the 
+        new features against the challenges of pushing rich 4d data through a classic 
+        estimator like a random forest.
+        """
+        flattened = np.zeros((len(ixs), self.story_width * 2 * len(self.feature_ixs)))
+        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
+            story = self.get_story(ix)
+            ds = self.densify_story(story) 
+            
+            # Flatten our features through averaging to make this approachable. Note this is a large
+            # feature matrix (2800 columns in the 'small' configuration). Beware attempting
+            # this at higher spatial resolutions accordingly. 
+            flattened[i] = np.mean(ds, axis=2)
+        return flattened
+        
     def intersect_stories(self, story):
         """
         Find and remove any stories that interesect in time or space with the provided

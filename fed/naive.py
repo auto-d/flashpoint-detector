@@ -167,7 +167,7 @@ def train(dataset, train, val):
     """
     return NaiveEstimator().fit(dataset, train, val)
 
-def test(model, dataset, test, preds):
+def test( dataset, model, test):
     """
     Test the naive model 
     """
