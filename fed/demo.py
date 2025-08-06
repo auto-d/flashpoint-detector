@@ -223,7 +223,7 @@ def render_story():
 
     return render_box(make_box(2,3,0,3,5))
 
-def render_points(steps=1): 
+def render_points(steps=3): 
     global gdf 
     global admin 
 
@@ -247,7 +247,7 @@ def render_map():
     """
     global admin     
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(4, 4))
     admin.plot(ax=ax)
     ax.axis('off')
     
@@ -293,16 +293,16 @@ def demo(share=False, data_tag="test"):
             with gr.Column(scale=2): 
                 gr.Markdown(value="The study area is the entirety of the internationally recognized borders of Ukraine")
             with gr.Column(scale=1):
-                basemap = gr.Plot(label="Basemap", container=False,)
+                basemap = gr.Plot(label="Ukraine", container=False,)
 
         # FUD points
         gr.Markdown("# 📍 Flashpoints Events")
         with gr.Row():                             
             with gr.Column(scale=1): 
-                gr.Markdown(value="The Flashpoints Ukraine Dataset (FUD) labels NASA thermal anomalies where their geometry intersects with ACLED-reported conflict events. We elect to operate on a granularity of 1 or more days, depending on dataset build settings. Higher resolutions in the temporal dimension create issues given satellite overflight patterns and the maximum resolution available in our event reporting.")
+                gr.Markdown(value="The Flashpoints Ukraine Dataset (FUD) labels NASA thermal anomalies where their geometry intersects with ACLED-reported conflict events. We elect to operate on a granularity of 1 or more days, depending on dataset build settings. Higher resolutions in the temporal dimension create issues given satellite overflight patterns and the maximum resolution available in our event reporting.\n\nThe full FUD spans roughly 4 years, covering a quiescent period in the conflict and the full-scale invasion and subsequent belligerence in 2022.")
             with gr.Column(scale=2): 
-                time_slider = gr.Slider(label="Thermal events to render", minimum=1, value=1, maximum=10, step=1)                    
-                fud = gr.Plot(label="Flashpoints Ukraine Dataset Slices") 
+                time_slider = gr.Slider(label="Time slices to render", minimum=1, value=3, maximum=10, step=1)                    
+                fud = gr.Plot(label="Flashpoints Ukraine Dataset slices") 
                 time_slider.change(fn=update_timestep, inputs=time_slider, outputs=[fud])
 
         # Story 'splainer
@@ -316,28 +316,12 @@ def demo(share=False, data_tag="test"):
         # Story in the context of points 
         with gr.Row(): 
             with gr.Column(scale=2):
-                story_context = gr.Plot(label="Story context")
-            with gr.Column(scale=1): 
-                gr.Markdown(value="The geomtry of a single story is rendered to the left.")                
+                story_context = gr.Plot(label="Story geometry in the context of sliced thermal anomalies")
 
         demo.load(render_map, outputs=[basemap])
         demo.load(render_points, outputs=[fud])
         demo.load(render_story,outputs=[story])
         demo.load(render_points_w_story, outputs=[story_context])
-
-        #     gr.Markdown(value="*If you'd like to see more recommendations, adjust accordingly with the slider to the right.*\n\n**Note:** Our low-quality items often have fragmented listings (which could be part of why they are so terrible!). When we encounter these we filter from the listing. *Actual recommendation counts may not match recommendation slider accordingly!* ☺️")            
-        
-        
-        # gallery = gr.Gallery(label="AI Recommendations", columns=3, height="auto", 
-        #                      value = get_product_images())         
-        
-        # with gr.Column(): 
-        #     product_info = gr.Markdown(label="Product Information", value="Select an item to display more product information!")        
-        #     rating = gr.Radio(choices=["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"], label="Rate this product!")
-        #     rating.change(fn=submit_rating, inputs=rating, outputs=[gallery, rating])
-
-        #     gallery.select(fn=on_click, outputs=product_info)
-        #     
 
     demo.launch(share=share)
 

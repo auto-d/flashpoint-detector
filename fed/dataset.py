@@ -379,9 +379,10 @@ class FlashpointsDataset():
         """
         
         if not self.scaled: 
+            
             # Iterate over our feature indices and scale each by the max value 
             for ix in self.feature_ixs.values(): 
-                self.lattice[:,:,:,ix] = self.lattices[:,:,:,ix] / np.max(self.lattices[:,:,:,ix])
+                self.lattice[:,:,:,ix] = self.lattice[:,:,:,ix] / np.max(self.lattice[:,:,:,ix])
 
         self.scaled = True 
     
