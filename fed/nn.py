@@ -10,45 +10,53 @@ from torch.utils.tensorboard import SummaryWriter
 from . import similarity
 from .dataset import FlashpointsTorchDataset
 
-class Autoencoder(nn.Module):
+class FlashpointsCNN(nn.Module):
     """
-    Autoencoder
-
-    NOTE: with cues from https://www.geeksforgeeks.org/deep-learning/implementing-an-autoencoder-in-pytorch/
+    Convolutional neural network to infer and act on relationships in the flashpoints
+    event database. 
+    
+    Base CNN network geometry courtesy of Huang et al: 
+    [4] Huang JP., Wang XA., Zhao Y., Xin C., Xiang H. (China) 
+    Large earthquake magnitude prediction in Taiwan based on deep learning neural network, 149-160
+    https://nnw.cz/doi/2018/NNW.2018.28.009.pdf
     """
 
-    def __init__(self, dims, l1, l2):
+    def __init__(self, width, depth, features):
         """
-        Initialize a new object given an item count 
-        """
-        self.dims = dims
-        self.l1 = l1
-        self.l2 = l2 
+        Construct our network 
 
+        N/batch : batch dimension 
+        C/channels : we will assign a chanell to each feature in our story
+        D/depth : this will be our temporal dimension
+        H/W : this is our square spatial dimension
+        """
+        self.input_width = width
+        self.input_depth = depth 
+        self.kernel_size = (3,3,3)
         super().__init__()
 
-        self.encoder = nn.Sequential(
-            nn.Linear(dims, l1),
-            nn.ReLU(), 
-            nn.Linear(l1, l2),
-            nn.ReLU(), 
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(l2, l1),
-            nn.ReLU(), 
-            nn.Linear(l1, dims),
-            nn.ReLU(), 
-            nn.Sigmoid()
-        )
+        self.conv1 = nn.Conv3d(in_channels=features, out_channels=3, kernel_size=(3,3,3)) 
+        self.pool1 = nn.MaxPool3d(kernel_size=3, stride=2)
+        self.conv2 = nn.Conv3d(in_channels=features, out_channels=3, kernel_size=(3,3,3)) 
+        self.pool2 = nn.MaxPool3d(kernel_size=3, stride=2)
+        self.fc1 = nn.Linear(15 * 4 * 3, 25) 
+        self.fc2 = nn.Linear(25, 1) 
+        
+    def forward(self, x): 
 
-    def forward(self, x):
-        """
-        Implement our forward pass 
-        """
-        h = self.encoder(x) 
-        r = self.decoder(h)
+        x = self.conv1(x)
+        x = F.relu(x) 
+        x = self.pool1(x)
+        x = self.conv2(x) 
+        x = F.relu(x) 
+        x = self.pool2(x) 
+        x = self.fc1(x) 
+        x = F.relu(x) 
+        x = self.fc2(x) 
+        x = F.sigmoid() 
 
-        return r
+        return x
+    
 
 class AutoencoderEstimator(): 
 
