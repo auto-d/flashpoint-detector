@@ -31,15 +31,14 @@ class ClassicEstimator(BaseEstimator):
         """ 
 
         tqdm.write(f"Flattening {len(train)} stories in preparation for training...")
-        flat = dataset.flatten_stories(train)
-        labels = dataset.flatten_labels(train)
+        X = dataset.flatten_stories(train)
+        y = dataset.flatten_labels(train)
         
-        tqdm.write(f"Flattening complete! New shape is {flat.shape}")
-        df = pd.DataFrame(flat)
+        tqdm.write(f"Flattening complete! New training shape is {X.shape}, new label shape is {y.shape}.")
 
         tqdm.write(f"Fitting random forest...")
         self.model = RandomForestClassifier(max_depth=10, random_state=42)
-        self.model.fit(df, labels)
+        self.model.fit(X, y)
 
         tqdm.write("Training complete!")
 
