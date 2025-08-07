@@ -1,4 +1,5 @@
 import os
+import time
 import torch 
 import numpy as np 
 import pandas as pd 
@@ -8,6 +9,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from . import similarity
+from datetime import datetime, timedelta
 
 class FlashpointsCNN(nn.Module):
     """
@@ -96,7 +98,8 @@ class FlashpointsEstimator():
 
         # Track progress with tensorboard-style output
         tqdm.write(f"Logging tensorboard output to {self.tensorboard_dir}")
-        path = os.path.join(self.tensorboard_dir, 'fp_classifier')
+        path = os.path.join(self.tensorboard_dir, 'fp_classifier', str(time.time()))
+        os.makedirs(path, exist_ok=True)
         writer = SummaryWriter(path)
 
         # Rehome, if necessary 
