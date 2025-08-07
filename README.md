@@ -196,7 +196,22 @@ All testing done with Python 3.12
 
 ## Usage 
 
+**Build a dataset** 
+
 ```
+ python -m fed build --sample-n 1000 --tag test --spatial-step 0.1
+Retrieving FUD from Kaggle (force=False)...
+Done. Path to local dataset files: flashpoint-ukraine-dataset/versions/1/fud.gpkg
+Loading geopackage....
+Loaded FUD, with coordinate system EPSG:4326
+Longitude steps @ 181, latitude @ 80, and time @ 1485
+Discretizing dataset at 0.1 decimal degree (11.10 km) and 1 day resolution. This will create a grid of 181 x 80 x 1485 (21,502,800 cells).
+Training aperture will be 20 steps square (222.00 kmtotal and 7 steps long (7 days)).
+100%|█████████████████████████████████████████████████████| 135050/135050 [00:04<00:00, 27331.44it/s]
+Sampling 1000 stories from the pre-war period (2020-09-01 00:00:00 - 2022-02-01 00:00:00,518 days total) and 1000 stories from the post-invasion period 2022-02-23 00:00:00 - 2024-09-24 00:00:00.
+100%|█████████████████████████████████████████████████████████| 2000/2000 [00:00<00:00, 51745.44it/s]
+Generation complete!
+Wrote 'test' FED dataset to data/.
 ```
   
 ## Demo Application

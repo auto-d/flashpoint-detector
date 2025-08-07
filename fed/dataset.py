@@ -158,7 +158,7 @@ class FlashpointsDataset():
         self.conflict_days = (self.max_date - self.transition_period[1]).days 
 
         # Conjure a massive numpy multidimensional array to back all future computations
-        self.lattice = np.zeros((lon_steps, lat_steps, time_steps, len(self.feature_ixs)))
+        self.lattice = np.zeros((lon_steps, lat_steps, time_steps, len(self.feature_ixs)),dtype=np.float32)
 
         gdf['conf_d'] = gdf.f_conf.apply(lambda x: 0.25 if x == 'l' else 0.5 if x == 'n' else 0.75)
         gdf['night_d'] = gdf.f_daynight.apply(lambda x: 0 if x == 'D' else 1)
@@ -338,7 +338,7 @@ class FlashpointsDataset():
         new features against the challenges of pushing rich 4d data through a classic 
         estimator like a random forest.
         """
-        flattened = np.zeros((len(ixs), self.story_width** 2 * (len(self.feature_ixs)-1)))
+        flattened = np.zeros((len(ixs), self.story_width** 2 * (len(self.feature_ixs)-1)),dtype=np.float32)
         for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
             story = self.get_story(ix)
             ds = self.densify_story(story) 
@@ -354,15 +354,17 @@ class FlashpointsDataset():
         As with story flattener above, we need to offer a flattened data type for models that 
         can't handle the dimensionality of what is now our native view (4d)
         """
-        flattened = np.zeros((len(ixs), self.story_width** 2))
+        flattened = np.zeros((len(ixs), self.story_width** 2),dtype=np.float32)
         for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
             story = self.get_story(ix)
             dl = self.label_story(story)
             
             flattened[i] = dl.flatten()
-        
-        flattened[flattened == 1] = 2
-        flattened[flattened == -1] = 1
+                
+        if categories: 
+            flattened[flattened == 1] = 2
+            flattened[flattened == -1] = 1
+
         return flattened
         
     def intersect_stories(self, story):
@@ -603,14 +605,15 @@ class FlashpointsTorchDataset(torch.utils.data.Dataset):
         """
         Retrieve length of the dataset
         """
-        return len(self.dataset.stories) 
+        return len(self.ixs) 
     
     def __getitem__(self, idx): 
         """
         Retrieve an item at the provided index
         """
         story = self.dataset.get_story(self.ixs[idx])
-        return self.dataset.densify_story(story)
+        dense = self.dataset.densify_story(story)
+        return dense
     
     def get_data_loader(self, shuffle=True): 
         """

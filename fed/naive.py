@@ -26,7 +26,7 @@ class NaiveEstimator(BaseEstimator):
         class. During prediction we'll try to match the distribution and predict the class with the best match. 
         """
         # Preallocate our feature and label sets
-        features = np.zeros((dataset.story_width, dataset.story_width, dataset.feature_ixs['count'] + 1))    
+        features = np.zeros((dataset.story_width, dataset.story_width, dataset.feature_ixs['count'] + 1), dtype=np.float32)    
         labels = np.zeros((dataset.story_width, dataset.story_width))    
         
         # Train the naive model on all stories
@@ -59,7 +59,7 @@ class NaiveEstimator(BaseEstimator):
     
         tqdm.write(f"Generating predictions... ")
 
-        preds = np.zeros((len(ixs), dataset.story_width, dataset.story_width))
+        preds = np.zeros((len(ixs), dataset.story_width, dataset.story_width), dtype=np.float32)
         for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
             story = dataset.get_story(ix)
             ds = dataset.densify_story(story)
@@ -70,7 +70,7 @@ class NaiveEstimator(BaseEstimator):
             # Restrict our search for matching distributions to non-zero featuresets
             sample_ixs = np.nonzero(ds)
             model_ixs = np.nonzero(self.model['features'])
-            scores = np.zeros((dataset.story_width, dataset.story_width))
+            scores = np.zeros((dataset.story_width, dataset.story_width), dtype=np.float32)
 
             # For every non-zero feature, find the optimal match from our training distributions
             for sx, sy in zip(sample_ixs[0], sample_ixs[1]): 

@@ -32,7 +32,7 @@ def score (dataset, preds, test_ixs, threshold=0.3):
 
     print(f"Scoring predictions... ")
 
-    scores = np.zeros((len(preds), 4))
+    scores = np.zeros((len(preds), 4), dtype=np.float32)
         
     # Iterate over all provided stories. Grab the ground truth and check the predictions
     # Note we don't penalize (or reward) for cells which we have no ground truth for... 

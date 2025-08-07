@@ -38,33 +38,30 @@ class FlashpointsCNN(nn.Module):
         super().__init__()
 
         self.conv1 = nn.Conv3d(in_channels=features, out_channels=3, kernel_size=(5,5,5)) 
-        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=(2,2,1))
-        self.conv2 = nn.Conv3d(in_channels=features, out_channels=3, kernel_size=(3,3,2)) 
-        self.fc1 = nn.Linear(6*6*1*7, width*width) 
+        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=(1,2,2))
+        self.fc1 = nn.Linear(3*2*8*8, width*width)
         
     def forward(self, x): 
         """
         Forward pass through the network. Make sure zero inputs (non-detections) are 
         masked during backpropagation or the zeros will dominate the gradient
         """
+        # We carry stories as (x, y, t, f) but pytorch Conv33 wants our data in (n, c, d, h, w). 
+        # NOTE: help from gpt-4o on this line, see: 
+        # https://chatgpt.com/share/6893d98e-7a8c-8013-9b0e-e0daeaaf7084
+        x = x.permute(0,4,3,2,1)
 
-        # (b, 20, 20, 7, 7) -> apply 5x5x5 kernel, 7 channels 
+        # (b, 7, 7, 20, 20) -> apply 5x5x5 kernel, 7 channels 
+        # conv3d expects (N, C, D, H, W)
         x = self.conv1(x)
         x = F.relu(x) 
 
-        # (b, 16, 16, 3, 7) -> apply 2x2x2 @ stride (2,2,1)
+        # (b, 3, 3, 16, 16) -> apply 2x2x2 @ stride (2,2,1)
         x = self.pool1(x)
 
-        # (b, 8,8,2,7) -> apply 3x3x2 kernel
-        x = self.conv2(x) 
-        x = F.relu(x) 
-
-        # (b, 6,6,1,7) -> 400 
+        # (b, 3, 2, 8, 8) -> 400 
         x = self.fc1(x.flatten()) 
         x = F.relu(x) 
-        
-        #TODO: remove and test, loss function wants unnormalized logits
-        #x = F.sigmoid() 
 
         return x
     
@@ -80,7 +77,7 @@ class FlashpointsEstimator():
         self.module = None
         self.tensorboard_dir = tensorboard_dir
 
-    def train(self, dataset, val_ixs, epochs=1, lr=0.001, loss_interval=10):
+    def train(self, train_ds, val_ds, epochs=1, lr=0.001, loss_interval=10):
         """
         Train the model with the furnished stories (spatio-temporal bricks that 
         capture a sequence of days culminating in one or more labeled events in the 
@@ -92,14 +89,13 @@ class FlashpointsEstimator():
         
         train_loss = []
 
+        all_labels = train_ds.dataset.flatten_labels(train_ds.ixs)
+
         model = FlashpointsCNN()  
-        loader = dataset.get_data_loader()            
-        
-        # TODO: these need to be normalized 
-        val_stories = []
-        for ix in val_ixs: 
-            story = dataset.get_story(ix)
-            val_stories.append = dataset.densify_story(story)
+
+        # Can't abide randomness here due to the linkage with our labelset above
+        loader = train_ds.get_data_loader(shuffle=False)            
+        val_loader = val_ds.get_data_loader(shuffle=False)
 
         # Track progress with tensorboard-style output
         tqdm.write(f"Logging tensorboard output to {self.tensorboard_dir}")
@@ -110,7 +106,9 @@ class FlashpointsEstimator():
         
         # We are looking to produce a probability that an event occurred at each 
         # cell in the story grid, 
-        loss_fn = nn.BCELoss()
+        # NOTE: help from gpt-4o on this line, see: 
+        # https://chatgpt.com/share/6893d98e-7a8c-8013-9b0e-e0daeaaf7084
+        loss_fn = nn.BCEWithLogitsLoss()
 
         optimizer = optim.Adam(model.parameters(), lr=lr)
         
@@ -118,23 +116,28 @@ class FlashpointsEstimator():
         for epoch in tqdm(range(epochs), total=epochs):
         
             running_loss = 0.0
-            for i, story in tqdm(enumerate(loader), total=len(dataset)/dataset.batch_size):
+            for i, story in tqdm(enumerate(loader), total=len(train_ds)/train_ds.batch_size):
 
                 # Mask out 0 inputs, we can't presume a lack of a thermal detection 
                 # suggest a lack of corresponding activity given overflight, atmospheric
                 # attenuation, cloud cover, etc... this is essential as well  
                 # given the sparsity of our detections. The model could learn to just emit 
                 # zeros and score reasonably well otherwise. 
-                mask = (story > 0)
+                labels = torch.from_numpy(all_labels[i]).to(device)
+                mask = (labels != 0)
                 mask = mask.to(device)
                 story = story.to(device)
+
+                # Now that we've created our mask, we can switch our labels to something
+                # same for the negative class
+                labels[labels == -1] = 0
                 
                 # Toss any gradient residue from prior runs
                 optimizer.zero_grad()
 
                 # Forward + back, masking out absent data
                 outputs = model(story)
-                loss = loss_fn(outputs[mask], story[mask])
+                loss = loss_fn(outputs[mask], labels[mask])
                 loss.backward()
 
                 optimizer.step()
@@ -144,12 +147,13 @@ class FlashpointsEstimator():
 
                 writer.add_scalar(f"Training loss", loss, epoch * len(loader) / loader.batch_size)
 
-                # TODO: log validation data based on our validation indices (stories)
-                val_loss = None
-                for val_story in val_stories: 
-                    preds = model(val_story)
-                    # ! 
-
+                val_loss = 0
+                preds = np.zeros((len(val_loader), val_ds.dataset.story_width**2))
+                for i, val_story in enumerate(val_loader): 
+                    output = model(val_story.to(device))
+                    preds[i] = output.detach().cpu().numpy()
+                
+                val_loss = similarity.score(val_ds.dataset, preds, val_ds.ixs)
                 writer.add_scalar(f"Validation loss", val_loss, epoch * len(loader) / loader.batch_size) 
                 
                 if (i % loss_interval) == (loss_interval - 1): 
@@ -184,7 +188,7 @@ class FlashpointsEstimator():
 
             tqdm.write(f"Generating predictions... ")
 
-            preds = np.zeros((len(loader), dataset.dataset.story_width, dataset.dataset.story_width))
+            preds = np.zeros((len(loader), dataset.dataset.story_width, dataset.dataset.story_width), dtype=np.float32)
             for i, story in tqdm(enumerate(loader)): 
                 
                 story.to(device)
