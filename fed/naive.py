@@ -134,4 +134,6 @@ def test( dataset, model, test):
     Test the naive model 
     """
     preds = model.predict(dataset, test)
-    model.score(dataset, preds, test)
+    scores = model.score(dataset, preds, test)
+    print(similarity.score_ixs)
+    print(scores) 
