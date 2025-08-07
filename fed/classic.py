@@ -8,7 +8,6 @@ from sklearn.base import BaseEstimator
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.ensemble import RandomForestClassifier
 from . import similarity
-from . import naive
 from xgboost import XGBClassifier
 
 class ClassicEstimator(BaseEstimator):

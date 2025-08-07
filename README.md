@@ -213,8 +213,25 @@ Sampling 1000 stories from the pre-war period (2020-09-01 00:00:00 - 2022-02-01 
 Generation complete!
 Wrote 'test' FED dataset to data/.
 ```
+
+**Deploy** 
+
+```
+$ python -m fed deploy --data-tag=test
+Loading FED from data... 
+Retrieving FUD from Kaggle (force=False)...
+Done. Path to local dataset files: /home/grim/.cache/kagglehub/datasets/justanotherjason/flashpoint-ukraine-dataset/versions/1/fud.gpkg
+Loading geopackage....
+Loaded FUD, with coordinate system EPSG:4326
+/home/grim/projects/school/flashpoint-detector/venv/lib/python3.12/site-packages/pyogrio/raw.py:198: RuntimeWarning: organizePolygons() received a polygon with more than 100 parts. The processing may be really slow.  You can skip the processing by setting METHOD=SKIP, or only make it analyze counter-clock wise parts by setting METHOD=ONLY_CCW if you can assume that the outline of holes is counter-clock wise defined
+  return ogr_read(
+* Running on local URL:  http://127.0.0.1:7860
+* To create a public link, set `share=True` in `launch()`.
+```
   
 ## Demo Application
+
+![alt text](docs/demo.png)
 
 ## Results and Conclusions
 

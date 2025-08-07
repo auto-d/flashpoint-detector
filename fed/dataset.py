@@ -339,7 +339,7 @@ class FlashpointsDataset():
         estimator like a random forest.
         """
         flattened = np.zeros((len(ixs), self.story_width** 2 * (len(self.feature_ixs)-1)),dtype=np.float32)
-        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
+        for i, ix in enumerate(ixs): 
             story = self.get_story(ix)
             ds = self.densify_story(story) 
             
@@ -355,7 +355,7 @@ class FlashpointsDataset():
         can't handle the dimensionality of what is now our native view (4d)
         """
         flattened = np.zeros((len(ixs), self.story_width** 2),dtype=np.float32)
-        for i, ix in tqdm(enumerate(ixs), total=len(ixs)): 
+        for i, ix in enumerate(ixs): 
             story = self.get_story(ix)
             dl = self.label_story(story)
             

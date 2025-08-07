@@ -3,10 +3,8 @@ import numpy as np
 from tqdm import tqdm
 import pandas as pd
 from sklearn.base import BaseEstimator 
-import matplotlib.pyplot as plt
 import pickle
 from . import similarity
-from .dataset import FlashpointsDataset, Story
 
 class NaiveEstimator(BaseEstimator): 
     """

@@ -8,9 +8,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from . import similarity
-from .dataset import FlashpointsTorchDataset
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, accuracy_score
-from . import naive 
 
 class FlashpointsCNN(nn.Module):
     """
@@ -99,7 +96,8 @@ class FlashpointsEstimator():
 
         # Track progress with tensorboard-style output
         tqdm.write(f"Logging tensorboard output to {self.tensorboard_dir}")
-        writer = SummaryWriter(os.path.join(self.tensorboard_dir), 'fp_classifier')
+        path = os.path.join(self.tensorboard_dir, 'fp_classifier')
+        writer = SummaryWriter(path)
 
         # Rehome, if necessary 
         model = model.to(device)
@@ -116,7 +114,7 @@ class FlashpointsEstimator():
         for epoch in tqdm(range(epochs), total=epochs):
         
             running_loss = 0.0
-            for i, story in tqdm(enumerate(loader), total=len(train_ds)/train_ds.batch_size):
+            for i, story in tqdm(enumerate(loader), total=int(len(train_ds)/train_ds.batch_size)):
 
                 # Mask out 0 inputs, we can't presume a lack of a thermal detection 
                 # suggest a lack of corresponding activity given overflight, atmospheric
@@ -145,7 +143,7 @@ class FlashpointsEstimator():
                 # Accumulate metrics for hyperparameter tuning
                 running_loss += loss.item()
 
-                writer.add_scalar(f"Training loss", loss, epoch * len(loader) / loader.batch_size)
+                writer.add_scalar(f"Training loss", loss, epoch * len(loader) + i)
 
                 val_loss = 0
                 preds = np.zeros((len(val_loader), val_ds.dataset.story_width**2))
@@ -154,11 +152,14 @@ class FlashpointsEstimator():
                     preds[i] = output.detach().cpu().numpy()
                 
                 val_loss = similarity.score(val_ds.dataset, preds, val_ds.ixs)
-                writer.add_scalar(f"Validation loss", val_loss, epoch * len(loader) / loader.batch_size) 
+                writer.add_scalar(f"Validation precision", val_loss[0], epoch * len(loader) + i ) 
+                writer.add_scalar(f"Validation recall", val_loss[1], epoch * len(loader) + i ) 
+                writer.add_scalar(f"Validation f1", val_loss[2], epoch * len(loader) + i ) 
+                writer.add_scalar(f"Validation accuracy", val_loss[3], epoch * len(loader) + i ) 
                 
                 if (i % loss_interval) == (loss_interval - 1): 
                     interval_loss = running_loss / loss_interval                    
-                    tqdm.write(f"[{epoch + 1}, {i + 1:5d}] loss: {interval_loss:.5f}")
+                    #tqdm.write(f"[{epoch + 1}, {i + 1:5d}] loss: {interval_loss:.5f}")
                     running_loss = 0 
         
         # Update our object state
@@ -186,10 +187,8 @@ class FlashpointsEstimator():
             # Generate recommendations
             loader = dataset.get_data_loader()
 
-            tqdm.write(f"Generating predictions... ")
-
             preds = np.zeros((len(loader), dataset.dataset.story_width, dataset.dataset.story_width), dtype=np.float32)
-            for i, story in tqdm(enumerate(loader)): 
+            for i, story in enumerate(loader): 
                 
                 story.to(device)
                 preds[i] = model(story)

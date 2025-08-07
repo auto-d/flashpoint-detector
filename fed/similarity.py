@@ -3,6 +3,13 @@ from scipy.stats import pearsonr
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, accuracy_score
 
+import warnings
+from sklearn.exceptions import UndefinedMetricWarning
+
+# Suppress only UndefinedMetricWarning, thanks to gpt-4o: 
+# https://chatgpt.com/share/6893f6c7-b71c-8013-bfdc-37e3ace0d945
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+
 def cosine_similarity(a, b): 
     """
     Return pairwise similarity between elements in passed arrays
@@ -17,21 +24,18 @@ def pearson_similarity(a, b):
     Compute Pearson similarity
     """
     return (1 + pearsonr(a, b).statistic) / 2
-    
+
+score_ixs = {
+    'precision': 0, 
+    'recall' : 1, 
+    'f1' : 2,
+    'accuracy': 3
+}
+
 def score (dataset, preds, test_ixs, threshold=0.3): 
     """
     Generic scoring method for our predictions     
-    """
-    
-    score_ixs = {
-        'precision': 0, 
-        'recall' : 1, 
-        'f1' : 2,
-        'accuracy': 3
-    }
-
-    print(f"Scoring predictions... ")
-
+    """  
     scores = np.zeros((len(preds), 4), dtype=np.float32)
         
     # Iterate over all provided stories. Grab the ground truth and check the predictions
@@ -53,8 +57,5 @@ def score (dataset, preds, test_ixs, threshold=0.3):
         scores[i][score_ixs['recall']] = recall_score(y, y_hat)
         scores[i][score_ixs['f1']] = f1_score(y, y_hat)
         scores[i][score_ixs['accuracy']] = accuracy_score(y, y_hat)
-
-        print(y, y_hat)        
-        print(f"Story {i} scores = {scores[i]}")
         
-    return scores
+    return np.mean(scores, axis=0)
