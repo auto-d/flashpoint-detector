@@ -322,7 +322,7 @@ class FlashpointsDataset():
         x0, y0 = np.nonzero(counts)
         values = counts[x0,y0]
         
-        kwargs = { 'c': values, 'cmap': 'magma' } if heatmap else {}
+        kwargs = { 'c': values, 'cmap': 'coolwarm' } if heatmap else {}
 
         plt.scatter(x0, y0, **kwargs)
         

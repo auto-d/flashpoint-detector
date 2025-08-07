@@ -16,25 +16,32 @@ import matplotlib.colors as mcolors
 
 from sklearn.metrics import classification_report, accuracy_score, top_k_accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 
+dataset = None
+test = None
 gdf = None
 admin = None 
+model = None 
 
 def initialize(tag):         
     """
     Initialize global state and populate initial recommendation s
     """
-
+    global test
     global gdf 
     global admin 
+    global model 
+    global dataset
     
     dataset = FlashpointsDataset.load("data", tag=tag)
     gdf = dataset.load_fud()    
+    dataset.split()
+    test = FlashpointsTorchDataset(dataset, dataset.val, batch_size=1)
 
     ukraine_admin_gdb = "data/ukr_admbnd_sspe_20240416_AB_GDB.gdb"    
     admin = gpd.read_file(ukraine_admin_gdb, layer=7)
     
     # Recover our model and create an empty dataset for our user(s)
-    #model = nn.load_model("models/") 
+    model = nn.load_model("models/") 
 
 def select(df, data: gr.SelectData):
     row = df.iloc[data.index[0], :]
@@ -218,6 +225,85 @@ def temporal_scatter_w_poly(geom, n_dates=3, color_map='OrRd', box=None, edge='r
     
     return fig
     
+def plot_story(lattice, start=None, end=None, heatmap=False):
+    """
+    Plot a map of events from our 4d story lattice given a time range to 
+    subset on
+    """
+
+    global dataset 
+
+    fig = plt.figure(figsize=(10,8))
+    ax = fig.add_subplot()    
+
+    counts = None 
+    if start is not None and end is not None: 
+        counts = lattice[:, :, start:end, 6]
+    else: 
+        counts = lattice[:, :, :, 6]
+    
+    # TODO: add label-specific colors? 
+    #if len(story[0,0,0]) - 1 >= feature_ixs['label']:         
+    
+    counts = np.sum(counts, axis=2)
+    x0, y0 = np.nonzero(counts)
+    values = counts[x0,y0]
+    
+    kwargs = { 'c': values, 'cmap': 'magma' } if heatmap else {}
+
+    ax.scatter(x0, y0, **kwargs)
+    ax.axis('off')
+
+    return fig
+
+def plot_preds(lattice, start=None, end=None, story_ix=None, preds=None, heatmap=False):
+    """
+    Plot a map of events from our 4d story lattice given a time range to 
+    subset on and some predictions
+    """
+
+    global dataset 
+
+    fig = plt.figure(figsize=(10,8))
+    ax = fig.add_subplot()    
+
+    counts = None 
+    if start is not None and end is not None: 
+        counts = lattice[:, :, start:end, 6]
+    else: 
+        counts = lattice[:, :, :, 6]
+    
+    counts = np.sum(counts, axis=2)
+    x0, y0 = np.nonzero(counts)
+    values = counts[x0,y0]
+    
+    kwargs = { 'c': values, 'cmap': 'magma' } if heatmap else {}
+
+    ax.scatter(x0, y0, **kwargs)
+        
+    if preds is not None:         
+        
+        # Back to square... and offset by story
+        preds = preds.reshape((20,20))
+        x,y,t = dataset.stories[story_ix][0]
+
+        x1 = []
+        y1 = []
+        
+        # Offset the preds by the story
+        for xb in range(0,20):            
+            for yb in range(0,20):                
+                if preds[xb,yb] > 0.5: 
+                    x1.append(x+xb)
+                    y1.append(y+yb)
+                
+        
+        ax.scatter(x1,y1, marker='*', color='red')
+
+    ax.axis('off')
+
+    return fig
+
 def render_story(): 
     global gdf
 
@@ -257,6 +343,26 @@ def update_timestep(step):
 
     return render_points(step)
 
+def show_story_view(): 
+    global dataset
+
+    return plot_story(dataset.lattice, start=0, end=100, heatmap=True)
+
+def show_story_predictions(): 
+
+    global dataset
+    global date
+    global model 
+
+    if model is not None: 
+        story_ix = [700]
+        story_ds = FlashpointsTorchDataset(dataset, story_ix, batch_size=1)
+        
+        preds = model.predict(story_ds)
+        preds = preds/preds.max()
+
+        return plot_preds(dataset.lattice, start=0, end=100, story_ix=story_ix, preds=preds, heatmap=True)
+
 def demo(share=False, data_tag="test"): 
     """
     Our Gradio demo app!
@@ -276,17 +382,7 @@ def demo(share=False, data_tag="test"):
         gr.Markdown(value="The flashpoint ukraine detector leverages four years of thermal anomaly data from multiple NASA hyperspectral imagers contextualized by the Armed Conflict & Location Data (ACLED) source. Its purpose is to classify new thermal anomalies to disambiguate conflict events from other thermal sources such as naturally occuring forest fires.")
 
         gr.Markdown(value="This application provides an overview of the modeling and demonstrates the prediction feature. ")
-
-        #FOlium
-        # fmap = Map(
-        #     location=[48, 31],
-        #     zoom_start=6, 
-        #     #crs="EPSG4326"
-        #     )
-        # map = Folium(value=fmap, height=800)
-        #data = gr.DataFrame(value=gdf, height=200)
-        #data.select(select, data, map)
-
+        
         # Basemap 
         gr.Markdown("# 🗺️ Study Area")
         with gr.Row():
@@ -317,7 +413,28 @@ def demo(share=False, data_tag="test"):
         with gr.Row(): 
             with gr.Column(scale=2):
                 story_context = gr.Plot(label="Story geometry in the context of sliced thermal anomalies")
+            
+        # Predictions
+        gr.Markdown("# 💡 Event Predictions")
+        with gr.Row(): 
+            with gr.Column(): 
+                gr.Markdown(value="The underlying dataset supports predictions during the relative quiescent period from September 1st, 2020 to February 1, 2022. And after the invasion from February 23rd, 2022 to September 24th, 2024.\n\n Click the button to render a slice of conflict events at the start of the war.")
+            with gr.Column(): 
+                filter_button = gr.Button("Render stories")
+        
+        story_view = gr.Plot(label="Story view")
+        filter_button.click(show_story_view, outputs=[story_view])
 
+        with gr.Row(): 
+            with gr.Column(): 
+                gr.Markdown(value="The underlying dataset supports predictions during the relative quiescent period from September 1st, 2020 to February 1, 2022. And after the invasion from February 23rd, 2022 to September 24th, 2024.\n\n Click the button to render a slice of conflict events at the start of the war.")
+            with gr.Column(): 
+                predict_button = gr.Button("Predict events")
+        
+        story_prediction = gr.Plot(label="Predictions")
+        predict_button.click(show_story_predictions, outputs=[story_prediction])
+        
+        # One-shot load operations
         demo.load(render_map, outputs=[basemap])
         demo.load(render_points, outputs=[fud])
         demo.load(render_story,outputs=[story])

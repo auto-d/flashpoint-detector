@@ -190,11 +190,10 @@ class FlashpointsEstimator():
             # Generate recommendations
             loader = dataset.get_data_loader()
 
-            preds = np.zeros((len(loader), dataset.dataset.story_width, dataset.dataset.story_width), dtype=np.float32)
+            preds = np.zeros((len(loader), dataset.dataset.story_width**2), dtype=np.float32)
             for i, story in enumerate(loader): 
-                
-                story.to(device)
-                preds[i] = model(story)
+                output = model(story.to(device))
+                preds[i] = output.detach().cpu().numpy()
 
         return preds
 
