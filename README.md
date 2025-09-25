@@ -2,14 +2,6 @@
 
 Ukraine conflict event detection through NASA FIRMS data analysis. 
 
-## TO DO 
-
-- implement classic method
-- build demo application 
-- incorporate visualizations from jupyter plots to illustrate temporal splits
-- build presentation 
-- record pitch 
-
 ## Problem 
 
 The Russo-Ukrainian war has had a devastating impact on the Ukrainian and Russian peoples alike. Tactical gains and strategic maneuvering are the subject of global interest, and significant geopolitical decisions turn on assessment of the war. Non-governmental organizations seeking to reduce the humanitarian cost of the war must position themselves to deliver aid in a dynamic and potentially lethal environment. However, the preponderance of battlefield reporting is sourced from on-the-ground accounts by citizens and non-governmental organizations (NGOs). This reporting is often delayed by hours or days, complicating emergency response efforts and contributing to the fog-of-war faced by humanitarian agencies.  
